@@ -12,6 +12,15 @@ const { nodeIO } = require('../src/nodeio');
 const VAULT = process.env.VAULT;
 if (!VAULT) { console.error('Set VAULT=/path/to/your/vault'); process.exit(1); }
 const PORT = +process.env.PORT || 8766;
+
+// Use the same settings the plugin has in this vault (its data.json), so the harness matches what Obsidian shows.
+const settingsFile = path.join(VAULT, '.obsidian/plugins/ideaverse-home/data.json');
+const readSettings = () => {
+  let saved = {};
+  try { saved = JSON.parse(fs.readFileSync(settingsFile, 'utf8')); } catch (e) { /* no saved settings: defaults */ }
+  if (process.env.ROOT !== undefined) saved.rootFolder = process.env.ROOT;
+  return Object.assign({}, DEFAULT_SETTINGS, saved, { efforts: Object.assign({}, DEFAULT_SETTINGS.efforts, saved.efforts) });
+};
 const local = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
 
 // Network exposure is opt-in: HOST=<lan ip> requires PASSWORD, and TTL_MIN shuts the server down on its own.
@@ -41,8 +50,9 @@ http.createServer(async (req, res) => {
     }
     if (req.url === '/styles.css') { res.setHeader('content-type', 'text/css'); return res.end(fs.readFileSync(path.join(__dirname, '../src/styles.css'))); }
     if (req.url === '/api/data') {
-      const d = await collect(nodeIO(VAULT), DEFAULT_SETTINGS, local());
-      d.staleDays = DEFAULT_SETTINGS.staleDays;
+      const settings = readSettings();
+      const d = await collect(nodeIO(VAULT), settings, local());
+      d.staleDays = settings.staleDays;
       res.setHeader('content-type', 'application/json'); return res.end(JSON.stringify(d));
     }
     res.statusCode = 404; res.end('not found');
