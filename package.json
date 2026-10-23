@@ -1,0 +1,16 @@
+{
+  "name": "ideaverse-home",
+  "version": "0.1.0",
+  "description": "Ideaverse home: a one-effort-per-screen dashboard for an Obsidian vault.",
+  "private": true,
+  "type": "commonjs",
+  "scripts": {
+    "build": "node build.js",
+    "install-vault": "node build.js --install",
+    "test": "node --test \"test/*.test.js\"",
+    "dev": "node dev/server.js"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.0"
+  }
+}

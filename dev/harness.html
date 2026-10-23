@@ -1,0 +1,17 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Ideaverse harness</title>
+<link rel="stylesheet" href="/styles.css">
+<style>html,body{margin:0;height:100%;background:#000}#root{position:fixed;inset:0}</style></head>
+<body><div id="root"></div>
+<script src="/ui.js"></script>
+<script>
+  // stands in for Obsidian: records what the plugin would do
+  window.__log = { opened: [], status: [] };
+  const mem = {};
+  const api = {
+    open: p => window.__log.opened.push(p),
+    setProposalStatus: async (p, s) => { const prev = mem[p] || 'pending'; mem[p] = s; window.__log.status.push([p, s]); return prev; }
+  };
+  window.__ui = IdeaverseUI.mount(document.getElementById('root'), api);
+  fetch('/api/data').then(r => r.json()).then(d => { window.__data = d; window.__ui.update(d); window.__ready = true; });
+</script></body></html>

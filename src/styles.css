@@ -1,0 +1,190 @@
+/* Ideaverse home. Everything is scoped under .ideaverse-root and prefixed iv- so it cannot touch other views. */
+.ideaverse-root{
+  --iv-bg:#080b14;--iv-text:#f2f4fa;--iv-muted:#a9b3c8;--iv-glass:rgba(255,255,255,.07);--iv-edge:rgba(255,255,255,.15);--iv-warn:#ff7a6b;
+  --iv-sans:var(--font-interface-theme,ui-sans-serif),-apple-system,"SF Pro Display","Segoe UI",system-ui,sans-serif;
+  --iv-mono:var(--font-monospace-theme,ui-monospace),"SF Mono",Menlo,monospace;
+  position:relative;height:100%;overflow:hidden;padding:0!important;background:var(--iv-bg);color:var(--iv-text);
+  font-family:var(--iv-sans);font-size:16px;line-height:1.5;outline:none;isolation:isolate;
+}
+.ideaverse-root *{box-sizing:border-box}
+.ideaverse-root button{font:inherit;color:inherit;box-shadow:none}
+.ideaverse-root button:focus-visible,.ideaverse-root summary:focus-visible,.ideaverse-root input:focus-visible,.ideaverse-root li:focus-visible{outline:3px solid #fff;outline-offset:3px}
+.ideaverse-root::before{content:"";position:absolute;inset:0;z-index:2;pointer-events:none;background:var(--tod,none)}
+.ideaverse-root .iv-glass{background:var(--iv-glass);backdrop-filter:blur(26px) saturate(1.4);-webkit-backdrop-filter:blur(26px) saturate(1.4);border:1px solid var(--iv-edge)}
+
+/* status line */
+.ideaverse-root .iv-status{position:absolute;inset:0 0 auto 0;z-index:20;display:flex;align-items:center;gap:6px;padding:10px 20px;font-size:14px;flex-wrap:wrap}
+.ideaverse-root .iv-mark{font-weight:700;margin-right:8px;letter-spacing:-.01em}
+.ideaverse-root .iv-sp{flex:1}
+.ideaverse-root .iv-chip{min-height:36px;padding:0 12px;border-radius:10px;background:none;border:1px solid transparent;cursor:pointer;display:inline-flex;gap:8px;align-items:center;font-weight:500}
+.ideaverse-root .iv-chip:hover,.ideaverse-root .iv-chip[aria-expanded="true"]{background:rgba(255,255,255,.1);border-color:var(--iv-edge)}
+.ideaverse-root .iv-chip b{font-family:var(--iv-mono);font-weight:500;background:#fff;color:#0b0e18;border-radius:6px;min-width:22px;height:22px;padding:0 4px;display:grid;place-items:center;font-size:12px}
+.ideaverse-root .iv-chip b.hot{background:#ffd88f}
+.ideaverse-root .iv-chip kbd{font-family:var(--iv-mono);font-size:12px;color:var(--iv-muted);border:1px solid var(--iv-edge);border-radius:6px;padding:0 6px;background:none;box-shadow:none}
+.ideaverse-root .iv-clock{font-family:var(--iv-mono);font-size:13px;color:var(--iv-muted);padding:0 8px}
+.ideaverse-root .iv-needs-wrap{position:relative}
+.ideaverse-root .iv-needs{position:absolute;left:0;top:42px;width:430px;max-width:calc(100vw - 24px);max-height:60vh;overflow:auto;list-style:none;margin:0;padding:8px;border-radius:16px;background:rgba(18,22,38,.94);backdrop-filter:blur(30px);border:1px solid var(--iv-edge);box-shadow:0 30px 80px rgba(0,0,0,.55)}
+.ideaverse-root .iv-needs[hidden]{display:none}
+.ideaverse-root .iv-needs li{padding:10px 12px;border-radius:10px;display:grid;gap:2px;cursor:pointer;margin:0}
+.ideaverse-root .iv-needs li:hover{background:rgba(255,255,255,.07)}
+.ideaverse-root .iv-needs span{color:var(--iv-muted);font-size:13px}
+.ideaverse-root .iv-needs em{font-style:normal;font-size:12px;color:#9cc4ff}
+
+/* stage and slides */
+.ideaverse-root .iv-stage{position:absolute;inset:0}
+.ideaverse-root .iv-track{display:flex;height:100%;transition:transform .55s cubic-bezier(.22,.8,.2,1)}
+.ideaverse-root .iv-slide{flex:0 0 100%;position:relative;height:100%;overflow:hidden auto;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,.95fr);align-items:center;gap:56px;padding:86px clamp(24px,8vw,120px) 150px;background:var(--iv-bg)}
+.ideaverse-root .iv-slide::before{content:"";position:absolute;inset:0;pointer-events:none;opacity:var(--wash,1);transition:opacity .4s;
+  background:radial-gradient(900px 620px at 78% 44%,hsl(var(--h) 80% 44% / .5),transparent 66%),radial-gradient(800px 520px at 4% 108%,hsl(calc(var(--h) + 55) 70% 30% / .5),transparent 62%)}
+.ideaverse-root .iv-slide>*{position:relative}
+.ideaverse-root .iv-slide.stale{--wash:.38}
+.ideaverse-root .iv-eyebrow{display:flex;gap:12px;align-items:center;flex-wrap:wrap;color:var(--iv-muted);font-size:14px}
+.ideaverse-root .iv-st{display:inline-block;font-size:13px;font-weight:600;padding:3px 12px;border-radius:99px;background:rgba(255,255,255,.14);color:#fff}
+.ideaverse-root .iv-st.wait{background:rgba(255,196,87,.22);color:#ffd88f}
+.ideaverse-root .iv-st.idle{background:rgba(255,255,255,.1);color:var(--iv-muted)}
+.ideaverse-root .iv-age.old{color:#ffd88f}
+.ideaverse-root .iv-slide h1{font-size:clamp(34px,5vw,80px);font-weight:600;letter-spacing:-.035em;line-height:1.04;margin:14px 0 22px;color:var(--iv-text)}
+.ideaverse-root .iv-lever{border-radius:22px;padding:20px 24px;max-width:600px;border-left:4px solid hsl(var(--h) 90% 68%)}
+.ideaverse-root .iv-lever small{display:block;font-family:var(--iv-mono);font-size:12px;color:var(--iv-muted);letter-spacing:.06em;text-transform:uppercase;margin-bottom:4px}
+.ideaverse-root .iv-lever p{margin:0;font-size:clamp(18px,1.8vw,26px);font-weight:500;line-height:1.3;letter-spacing:-.01em}
+.ideaverse-root .iv-spark{margin-top:22px;display:flex;align-items:flex-end;gap:14px;flex-wrap:wrap}
+.ideaverse-root .iv-spark svg{display:block}
+.ideaverse-root .iv-spark rect{fill:hsl(var(--h) 85% 72%)}
+.ideaverse-root .iv-spark rect.z{fill:rgba(255,255,255,.18)}
+.ideaverse-root .iv-spark small{font-size:13px;color:var(--iv-muted);max-width:30ch}
+.ideaverse-root details{margin-top:20px;max-width:600px}
+.ideaverse-root summary{cursor:pointer;color:var(--iv-muted);font-size:14px;list-style:none;display:inline-flex;gap:8px;align-items:center;min-height:36px}
+.ideaverse-root summary::-webkit-details-marker{display:none}
+.ideaverse-root summary::before{content:"+";font-family:var(--iv-mono);width:18px;height:18px;border:1px solid var(--iv-edge);border-radius:5px;display:grid;place-items:center;font-size:13px}
+.ideaverse-root details[open] summary::before{content:"–"}
+.ideaverse-root details p{color:#d3d9e8;margin:6px 0 0;font-size:15px}
+.ideaverse-root .iv-facts{list-style:none;padding:0;margin:12px 0 0;display:flex;gap:8px;flex-wrap:wrap}
+.ideaverse-root .iv-facts li{font-size:14px;padding:5px 12px;border-radius:99px;background:var(--iv-glass);border:1px solid var(--iv-edge);margin:0}
+.ideaverse-root .iv-links{display:flex;gap:8px;margin-top:14px;flex-wrap:wrap}
+
+/* pictures */
+.ideaverse-root .iv-art{justify-self:center;width:min(540px,100%);border-radius:28px;padding:26px 28px}
+.ideaverse-root .iv-h{font-size:12px;font-family:var(--iv-mono);font-weight:500;color:var(--iv-muted);letter-spacing:.06em;text-transform:uppercase;margin:0 0 14px}
+.ideaverse-root .iv-gh{font-size:13px;font-weight:600;color:var(--iv-muted);margin:14px 0 8px}
+.ideaverse-root .iv-cap{margin:14px 0 0;font-size:14px;color:var(--iv-muted);min-height:44px}
+.ideaverse-root .iv-cap b{color:var(--iv-text);font-weight:500}
+.ideaverse-root .iv-warn{color:var(--iv-warn)!important}
+.ideaverse-root .iv-more{font-size:13px;color:var(--iv-muted);margin:6px 0 0 42px}
+.ideaverse-root .iv-grid{display:grid;gap:8px}
+.ideaverse-root .iv-cell{aspect-ratio:1;border-radius:9px;border:0;padding:0;cursor:pointer;background:hsl(var(--h) 80% 62%);transition:transform .12s;min-height:0}
+.ideaverse-root .iv-cell.open{background:transparent;border:2px dashed hsl(var(--h) 90% 78%)}
+.ideaverse-root .iv-cell:hover,.ideaverse-root .iv-cell:focus-visible{transform:scale(1.14)}
+.ideaverse-root .iv-key{display:flex;gap:18px;font-size:13px;color:var(--iv-muted);margin-top:14px}
+.ideaverse-root .iv-key i{display:inline-block;width:12px;height:12px;border-radius:4px;vertical-align:-1px;margin-right:6px;background:hsl(var(--h) 80% 62%)}
+.ideaverse-root .iv-key i.o{background:none;border:2px dashed hsl(var(--h) 90% 78%)}
+.ideaverse-root .iv-svc text{font-size:12.5px;fill:#e8ecf6;font-family:var(--iv-sans)}
+.ideaverse-root .iv-svc .iv-hubt{font-weight:600;font-size:15px}
+.ideaverse-root .iv-line{stroke:rgba(255,255,255,.22);stroke-width:1.2}
+.ideaverse-root .iv-hub{fill:hsl(var(--h) 70% 36%);stroke:rgba(255,255,255,.4)}
+.ideaverse-root .iv-node{fill:hsl(var(--h) 70% 55%)}
+.ideaverse-root .iv-risk{fill:var(--iv-warn)}
+.ideaverse-root .iv-base{fill:rgba(255,255,255,.1);stroke:rgba(255,255,255,.2)}
+.ideaverse-root .iv-pulse{fill:none;stroke:var(--iv-warn);stroke-width:2;transform-box:fill-box;transform-origin:center;animation:iv-pulse 2.4s ease-out infinite}
+@keyframes iv-pulse{0%{transform:scale(.7);opacity:.9}100%{transform:scale(2.1);opacity:0}}
+.ideaverse-root .iv-pipe{list-style:none;padding:0;margin:0;position:relative;display:grid;gap:12px}
+.ideaverse-root .iv-pipe::before{content:"";position:absolute;left:13px;top:12px;bottom:12px;width:2px;background:rgba(255,255,255,.2)}
+.ideaverse-root .iv-pipe li{display:grid;grid-template-columns:28px 1fr;gap:14px;align-items:center;position:relative;font-size:15px;margin:0}
+.ideaverse-root .iv-pipe i{width:28px;height:28px;border-radius:50%;border:2px solid rgba(255,255,255,.4);background:var(--iv-bg);display:grid;place-items:center;font-style:normal;font-size:14px}
+.ideaverse-root .iv-pipe li.done i{background:hsl(var(--h) 80% 62%);border-color:transparent;color:#071018}
+.ideaverse-root .iv-pipe li.now i{border-color:hsl(var(--h) 90% 76%);box-shadow:0 0 0 6px hsl(var(--h) 90% 60% / .25)}
+.ideaverse-root .iv-pipe li.now{font-weight:600}
+.ideaverse-root .iv-pipe li.todo{color:var(--iv-muted)}
+.ideaverse-root .iv-pipe em{font-style:normal;font-size:11px;font-family:var(--iv-mono);color:hsl(var(--h) 90% 78%);margin-left:8px}
+.ideaverse-root .iv-ladder{list-style:none;padding:0;margin:0;display:grid;gap:8px;counter-reset:s}
+.ideaverse-root .iv-ladder li{display:grid;grid-template-columns:28px 1fr;gap:12px;align-items:center;padding:8px 12px;border-radius:12px;background:rgba(255,255,255,.05);counter-increment:s;margin:0}
+.ideaverse-root .iv-ladder li::before{content:counter(s);font-family:var(--iv-mono);width:28px;height:28px;border-radius:8px;border:1.5px solid rgba(255,255,255,.35);display:grid;place-items:center;font-size:13px}
+.ideaverse-root .iv-ladder li.done{opacity:.55;text-decoration:line-through}
+.ideaverse-root .iv-ladder li.gate{border:1.5px solid var(--iv-warn);background:rgba(255,122,107,.1)}
+.ideaverse-root .iv-ladder li.gate::before{border-color:var(--iv-warn);color:var(--iv-warn)}
+.ideaverse-root .iv-gatenote{margin:12px 0 0;font-size:14px;color:#ffc2ba;display:flex;gap:8px}
+.ideaverse-root .iv-axis text{font-size:12px;fill:var(--iv-muted);font-family:var(--iv-mono)}
+.ideaverse-root .iv-axis .iv-pt text{fill:#e8ecf6;font-family:var(--iv-sans);font-size:12.5px}
+.ideaverse-root .iv-axis .iv-dim{fill:var(--iv-muted)!important;font-family:var(--iv-mono)!important;font-size:11.5px!important}
+.ideaverse-root .iv-axis .iv-bt{fill:#fff;font-family:var(--iv-sans)}
+.ideaverse-root .iv-band{fill:hsl(var(--h) 80% 60% / .35);stroke:hsl(var(--h) 85% 72%)}
+.ideaverse-root .iv-meter{height:12px;border-radius:99px;background:rgba(255,255,255,.14);overflow:hidden;margin:18px 0 8px}
+.ideaverse-root .iv-meter i{display:block;height:100%;background:hsl(var(--h) 85% 68%)}
+
+/* arrows, pager */
+.ideaverse-root .iv-nav{position:absolute;top:50%;translate:0 -50%;width:52px;height:52px;border-radius:50%;display:grid;place-items:center;cursor:pointer;z-index:10;transition:background .15s,scale .15s;padding:0;color:#fff}
+.ideaverse-root .iv-nav:hover{background:rgba(255,255,255,.18);scale:1.06}
+.ideaverse-root .iv-nav.prev{left:22px}.ideaverse-root .iv-nav.next{right:22px}
+.ideaverse-root .iv-dots{position:absolute;left:0;right:0;bottom:112px;display:flex;justify-content:center;gap:2px;z-index:10}
+.ideaverse-root .iv-dots button{min-width:44px;min-height:32px;background:none;border:0;cursor:pointer;display:grid;place-items:center;padding:0}
+.ideaverse-root .iv-dots button i{display:block;width:8px;height:8px;border-radius:99px;background:rgba(255,255,255,.35);transition:width .25s,background .25s}
+.ideaverse-root .iv-dots button[aria-current="true"] i{width:28px;background:#fff}
+
+/* dock */
+.ideaverse-root .iv-dockwrap{position:absolute;left:0;right:0;bottom:14px;display:flex;justify-content:center;z-index:30;pointer-events:none}
+.ideaverse-root .iv-dock{pointer-events:auto;display:flex;align-items:flex-end;gap:6px;padding:8px 14px;border-radius:20px}
+.ideaverse-root .iv-d{position:relative;min-width:68px;min-height:60px;background:none;border:0;cursor:pointer;display:grid;justify-items:center;align-content:center;gap:2px;border-radius:14px;padding:0;
+  transform:scale(var(--s,1));transform-origin:50% 100%;transition:transform .08s linear}
+.ideaverse-root .iv-d:hover{background:rgba(255,255,255,.08)}
+.ideaverse-root .iv-d svg{width:28px;height:28px;stroke:#fff;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+.ideaverse-root .iv-d span{font-size:12px;color:var(--iv-muted)}
+.ideaverse-root .iv-d[aria-pressed="true"] span{color:#fff;font-weight:600}
+.ideaverse-root .iv-d[aria-pressed="true"]::after{content:"";position:absolute;left:18px;right:18px;bottom:0;height:3px;border-radius:3px;background:#fff}
+.ideaverse-root .iv-d .iv-num{font-family:var(--iv-mono);font-size:15px;font-weight:500;color:#fff;border:1.7px solid #fff;border-radius:50%;width:30px;height:30px;display:grid;place-items:center}
+.ideaverse-root .iv-badge{position:absolute;top:4px;right:10px;background:#ffd88f;color:#201500;border-radius:99px;min-width:18px;height:18px;font-size:11px;font-weight:700;display:grid;place-items:center;font-family:var(--iv-mono);font-style:normal}
+.ideaverse-root .iv-badge:empty{display:none}
+
+/* windows */
+.ideaverse-root .iv-layer{position:absolute;inset:0 0 100px 0;z-index:25;display:grid;place-items:center;padding:60px 20px 12px;background:rgba(5,7,14,.45)}
+.ideaverse-root .iv-layer[hidden]{display:none}
+.ideaverse-root .iv-win{width:min(720px,100%);max-height:100%;overflow:auto;border-radius:22px;background:rgba(20,25,42,.9);box-shadow:0 40px 120px rgba(0,0,0,.6);animation:iv-pop .2s ease-out}
+@keyframes iv-pop{from{opacity:0;transform:translateY(10px)}}
+.ideaverse-root .iv-win header{display:flex;align-items:center;gap:12px;padding:12px 16px 12px 24px;border-bottom:1px solid var(--iv-edge);position:sticky;top:0;background:rgba(20,25,42,.97);z-index:1}
+.ideaverse-root .iv-win header h2{flex:1;font-size:15px;font-weight:600;margin:0}
+.ideaverse-root .iv-x{width:44px;height:44px;border:0;background:none;cursor:pointer;border-radius:10px;font-size:22px;color:var(--iv-muted);padding:0}
+.ideaverse-root .iv-x:hover{background:rgba(255,255,255,.1);color:#fff}
+.ideaverse-root .iv-body{padding:20px 24px 26px}
+.ideaverse-root .iv-rows{list-style:none;padding:0;margin:0;display:grid;gap:8px}
+.ideaverse-root .iv-rows>li{padding:12px 14px;border-radius:14px;background:rgba(255,255,255,.06);display:grid;gap:2px;margin:0}
+.ideaverse-root .iv-link{background:none;border:0;padding:0;text-align:left;cursor:pointer;display:grid;gap:2px;width:100%}
+.ideaverse-root .iv-link:hover b{text-decoration:underline}
+.ideaverse-root .iv-rows time{font-size:13px;color:#9cc4ff;font-family:var(--iv-mono)}
+.ideaverse-root .iv-prop{grid-template-columns:1fr;gap:6px!important}
+.ideaverse-root .iv-prop .t{font-weight:600}
+.ideaverse-root .iv-prop .to{font-size:13px;color:var(--iv-muted);font-family:var(--iv-mono);word-break:break-all}
+.ideaverse-root .iv-prop .act{display:flex;gap:6px;flex-wrap:wrap;margin-top:4px}
+.ideaverse-root .iv-prop.done{opacity:.75}
+.ideaverse-root .iv-btn{min-height:40px;padding:0 14px;border-radius:10px;border:1px solid var(--iv-edge);background:rgba(255,255,255,.08);cursor:pointer;font-size:14px;font-weight:500}
+.ideaverse-root .iv-btn.p{background:#fff;color:#0b0e18;border-color:#fff}
+.ideaverse-root .iv-btn:hover{filter:brightness(1.15)}
+.ideaverse-root .iv-tag{font-size:11px;font-family:var(--iv-mono);padding:1px 8px;border-radius:6px;margin-right:8px;background:rgba(255,216,143,.2);color:#ffd88f}
+.ideaverse-root .iv-tag.draft{background:rgba(255,255,255,.12);color:var(--iv-muted)}
+.ideaverse-root .iv-note{margin:14px 0 0;font-size:13px;color:var(--iv-muted)}
+.ideaverse-root .iv-void{border:2px dashed rgba(255,255,255,.3);border-radius:18px;padding:36px 24px;text-align:center;color:var(--iv-muted);margin-bottom:16px}
+.ideaverse-root .iv-void b{display:block;font-size:56px;color:#fff;font-weight:600;line-height:1}
+
+/* command bar */
+.ideaverse-root .iv-pal{position:absolute;inset:0;z-index:40;display:grid;place-items:start center;padding-top:14vh;background:rgba(5,7,14,.55)}
+.ideaverse-root .iv-pal[hidden]{display:none}
+.ideaverse-root .iv-box{width:min(560px,calc(100% - 24px));border-radius:20px;background:rgba(20,25,42,.96);overflow:hidden;box-shadow:0 40px 120px rgba(0,0,0,.6)}
+.ideaverse-root .iv-pin{width:100%;background:none!important;border:0!important;border-bottom:1px solid var(--iv-edge)!important;border-radius:0!important;color:#fff;font:inherit;font-size:18px;padding:18px 22px;outline:none;min-height:56px;box-shadow:none!important}
+.ideaverse-root .iv-plist{list-style:none;padding:8px;margin:0;max-height:46vh;overflow:auto}
+.ideaverse-root .iv-plist li{padding:10px 14px;border-radius:12px;cursor:pointer;display:flex;justify-content:space-between;gap:12px;min-height:44px;align-items:center;margin:0}
+.ideaverse-root .iv-plist li[aria-selected="true"]{background:rgba(255,255,255,.12)}
+.ideaverse-root .iv-plist li span{color:var(--iv-muted);font-size:13px;font-family:var(--iv-mono)}
+
+@media (max-width:900px){
+  .ideaverse-root .iv-status{padding:8px 10px;gap:2px;flex-wrap:nowrap;background:rgba(8,11,20,.7);backdrop-filter:blur(14px)}
+  .ideaverse-root .iv-mark,.ideaverse-root .iv-sp,.ideaverse-root [data-recent],.ideaverse-root .iv-clock{display:none}
+  .ideaverse-root .iv-chip{padding:0 8px;font-size:13px;white-space:nowrap}
+  .ideaverse-root [data-pal]{margin-left:auto}
+  .ideaverse-root .iv-slide{grid-template-columns:1fr;align-content:start;padding:64px 20px 250px;gap:22px}
+  .ideaverse-root .iv-art{padding:20px}
+  .ideaverse-root .iv-dots{display:none}
+  .ideaverse-root .iv-nav{top:auto;bottom:112px;translate:none;width:46px;height:46px;background:rgba(20,24,40,.94)}
+  .ideaverse-root .iv-nav.prev{left:14px}.ideaverse-root .iv-nav.next{right:14px}
+  .ideaverse-root .iv-d{min-width:56px}
+  .ideaverse-root .iv-layer{padding-top:56px}
+}
+@media (prefers-reduced-motion:reduce){
+  .ideaverse-root .iv-track,.ideaverse-root .iv-d,.ideaverse-root .iv-win,.ideaverse-root .iv-dots i,.ideaverse-root .iv-pulse{transition:none;animation:none}
+}

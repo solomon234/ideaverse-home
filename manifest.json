@@ -1,0 +1,10 @@
+{
+  "id": "ideaverse-home",
+  "name": "Ideaverse Home",
+  "version": "0.1.0",
+  "minAppVersion": "1.5.0",
+  "description": "A one-effort-per-screen home for your vault: the lever, a picture drawn from the effort's own notes, and a proposals tray.",
+  "author": "solomon234",
+  "isDesktopOnly": true,
+  "authorUrl": "https://github.com/solomon234"
+}
