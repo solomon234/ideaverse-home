@@ -2,6 +2,7 @@
 // The dashboard view. Plain DOM, no framework. mount(root, api) returns { update(data), destroy() }.
 //   api.open(path)                       open a note
 //   api.setProposalStatus(path, status)  rewrite a proposal's status line; resolves to the previous status
+//   api.snooze(key, 'day'|'week'|'forever')  hide a Needs-you item; api.unsnooze(key) brings it back
 //   api.claudeRun(kind, payload)         kind 'ask' | 'triage' | 'log'; resolves to { ok, text, error, mode, draft, cancelled }
 //   api.claudeCancel()                   stop a background run
 //   api.appendLog(text)                  add a drafted log entry to the day's log; resolves to true if it did
@@ -76,7 +77,7 @@ const art = {
 
 function mount(root, api) {
   const doc = root.ownerDocument;
-  let data = null, claude = { title: '', status: 'idle', text: '', draft: false, id: 0 }, cur = 0, win = null, trayRows = [], pal = { open: false, sel: 0, items: [] }, needsOpen = false;
+  let data = null, claude = { title: '', status: 'idle', text: '', draft: false, id: 0 }, cur = 0, win = null, trayRows = [], pal = { open: false, sel: 0, items: [] }, needsOpen = false, snoozeFor = -1, snoozedOpen = false;
 
   root.classList.add('ideaverse-root');
   root.setAttribute('tabindex', '-1');
@@ -148,7 +149,12 @@ function mount(root, api) {
   function renderStatus() {
     setN('needs', data.needs.length); setN('tray', data.layers.aios.toDecide); setN('badge', data.layers.aios.toDecide || '');
     setN('last', data.sessions[0] ? data.sessions[0].date : 'none');
-    needsUl.innerHTML = data.needs.length ? data.needs.map((n, i) => `<li data-i="${i}" tabindex="0"><b>${esc(n.title)}</b><span>${esc(n.why)}</span>${n.effort ? `<em>${esc(n.effort)}</em>` : ''}</li>`).join('') : '<li><b>Nothing open.</b><span>No unchecked Immediate todos or open items in the log.</span></li>';
+    const sn = data.snoozed || [], until = u => (u === 'forever' ? 'until you un-snooze' : 'until ' + fmtIso(u));
+    const rows = data.needs.map((n, i) => `<li data-i="${i}" tabindex="0"><b>${esc(n.title)}</b><span>${esc(n.why)}</span>${n.effort ? `<em>${esc(n.effort)}</em>` : ''}${snoozeFor === i
+      ? `<div class="iv-snz" role="group" aria-label="Snooze for"><button class="iv-btn" data-snooze="day" data-i="${i}">1 day</button><button class="iv-btn" data-snooze="week" data-i="${i}">1 week</button><button class="iv-btn" data-snooze="forever" data-i="${i}">Until I un-snooze</button></div>`
+      : `<button class="iv-snb" data-snz="${i}" aria-label="Snooze: ${esc(n.title)}">Snooze</button>`}</li>`).join('');
+    const tail = sn.length ? `<li class="iv-sn-head"><button class="iv-snb" data-snoozed-list aria-expanded="${snoozedOpen}">Snoozed (${sn.length})</button></li>${snoozedOpen ? sn.map((n, i) => `<li class="iv-sn-row" data-s="${i}"><b>${esc(n.title)}</b><span>${esc(until(n.until))}</span><button class="iv-snb" data-unsnooze="${i}">Un-snooze</button></li>`).join('') : ''}` : '';
+    needsUl.innerHTML = (data.needs.length ? rows : '<li class="iv-empty"><b>Nothing open.</b><span>No unchecked Immediate todos or open items in the log.</span></li>') + tail;
   }
   function setNeeds(o) { needsOpen = o; needsUl.hidden = !o; needsBtn.setAttribute('aria-expanded', o); }
 
@@ -226,7 +232,11 @@ function mount(root, api) {
     if (t.closest('.iv-nav.next')) return go(cur + 1);
     const dot = t.closest('.iv-dots button'); if (dot) return go(+dot.dataset.i);
     if (t.closest('[data-needs]')) return setNeeds(!needsOpen);
-    const nl = t.closest('.iv-needs li[data-i]'); if (nl) { const n = data.needs[+nl.dataset.i]; if (n && n.path) api.open(n.path); setNeeds(false); return; }
+    const snz = t.closest('[data-snz]'); if (snz) { snoozeFor = +snz.dataset.snz; renderStatus(); return; }
+    const snr = t.closest('[data-snooze]'); if (snr) { const n = data.needs[+snr.dataset.i]; snoozeFor = -1; if (n) api.snooze(n.key, snr.dataset.snooze); return; }
+    if (t.closest('[data-snoozed-list]')) { snoozedOpen = !snoozedOpen; renderStatus(); return; }
+    const uns = t.closest('[data-unsnooze]'); if (uns) { const n = data.snoozed[+uns.dataset.unsnooze]; if (n) api.unsnooze(n.key); return; }
+    const nl = t.closest('.iv-needs li[data-i]:not(.iv-sn-row)'); if (nl) { const n = data.needs[+nl.dataset.i]; if (n && n.path) api.open(n.path); setNeeds(false); return; }
     if (t.closest('[data-tray]')) return showView('aios', t);
     if (t.closest('[data-recent]')) return showView('recent', t);
     if (t.closest('[data-pal]')) return openPal();

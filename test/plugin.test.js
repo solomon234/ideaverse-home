@@ -165,3 +165,18 @@ test('a drafted log entry is checked before it is added', { skip: !fs.existsSync
   assert.strictEqual(files['V/AIOS/Logs/2026-10/log-2026-10-23.md'], '**2026-10-23 (x)** — T\n- Built: a\n---\n');
   assert.strictEqual(Object.keys(files).length, 1);
 });
+
+test('snooze stores an expiry in settings only, drops expired ones, and un-snooze removes it', { skip: !fs.existsSync(DIST) && 'run npm run build first' }, async () => {
+  const { Cls } = loadPlugin();
+  const app = { vault: { on: () => ({}), adapter: {} }, workspace: { onLayoutReady: fn => fn(), getLeavesOfType: () => [] } };
+  const plugin = new Cls(app);
+  await plugin.onload();
+  plugin.settings.snoozed = { old: '2000-01-01', keep: 'forever' };
+  await plugin.snooze('a::b', 'week');
+  await plugin.snooze('c::d', 'forever');
+  assert.deepStrictEqual(Object.keys(plugin.settings.snoozed).sort(), ['a::b', 'c::d', 'keep']);
+  assert.ok(/^\d{4}-\d{2}-\d{2}$/.test(plugin.settings.snoozed['a::b']));
+  assert.strictEqual(plugin.saved.snoozed['c::d'], 'forever', 'saved to the plugin data file');
+  await plugin.unsnooze('c::d');
+  assert.strictEqual('c::d' in plugin.settings.snoozed, false);
+});

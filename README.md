@@ -36,6 +36,7 @@ It is opinionated: it assumes a vault laid out like this, and shows a "No effort
   - *Mark done* on the lever: ticks the item in its note (`- [ ]` to `- [x]`), or moves a Kanban card to the board's done lane, with Undo;
   - *+ Effort*: creates `Efforts/<name>/README.md` from a small template;
   - the add-a-todo box on an effort's screen: adds one `- [ ]` line to the end of the note's Immediate list (or a card to the first open lane of its Kanban board); if the note has no Immediate list, a `## Todo List` / `### Immediate` is added at the end. The line under the box says which;
+  - *Snooze* on a "Needs you" item: hides it for a day, a week or until you un-snooze it. Stored in the plugin's own settings file (`data.json`), not in any note;
   - *+ Capture*: appends a timestamped bullet under a `## Quick capture` heading in today's `AIOS/Scratch/scratch-YYYY-MM-DD.md` (created if needed);
   - *+ Meeting*: appends one entry to the end of that month's `AIOS/Logs/log-YYYY-MM.md`, or, with the *Session log files* setting on "per day", to `AIOS/Logs/YYYY-MM/log-YYYY-MM-DD.md` (creating the file if needed) in the form `**date (meeting)** — Title`, with optional `With`, `Outcome` and `Open` lines.
 

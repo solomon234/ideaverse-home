@@ -168,3 +168,9 @@ test('appendCapture reuses a trailing Quick capture section only', () => {
   assert.ok(P.appendCapture(first + '\n## Other\n', '09:11', 'c').endsWith('## Other\n\n## Quick capture\n\n- 09:11 — c\n'));
   assert.strictEqual(P.appendCapture('', '09:00', ' '), null);
 });
+
+test('addDays crosses month and year ends', () => {
+  assert.strictEqual(P.addDays('2026-10-23', 1), '2026-10-24');
+  assert.strictEqual(P.addDays('2026-10-30', 7), '2026-11-06');
+  assert.strictEqual(P.addDays('2026-12-31', 1), '2027-01-01');
+});

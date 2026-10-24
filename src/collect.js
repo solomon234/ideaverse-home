@@ -7,6 +7,7 @@ const P = require('./parse');
 const DEFAULT_SETTINGS = {
   rootFolder: '', // folder that holds Efforts, AIOS, Atlas and Calendar; empty means the vault root
   openOnStartup: false,
+  snoozed: {}, // hidden "Needs you" items: { '<note>::<text>': 'YYYY-MM-DD' (until) | 'forever' }
   claudeMode: 'off', // 'off', 'terminal' (open Terminal with a prompt) or 'background' (run claude -p, read-only, and show the answer)
   claudePath: '', // empty: look in the usual install folders
   logLayout: 'month', // where + Meeting writes: 'month' (AIOS/Logs/log-YYYY-MM.md) or 'day' (AIOS/Logs/YYYY-MM/log-YYYY-MM-DD.md); both layouts are always read
@@ -160,18 +161,22 @@ async function collect(io, settings, today) {
     const entries = P.parseLog(await readSafe(io, lf)).reverse();
     for (const en of entries) {
       sessions.push({ date: P.formatDateLabel(en.label), iso: (/\d{4}-\d{2}-\d{2}/.exec(en.label) || [''])[0], tag: ((/\(([^)]*)\)/.exec(en.label) || [])[1] || '').trim(), open: en.open.length, title: P.trunc(en.title || 'Session', 90), path: lf });
-      if (en.open.length && openItems.length < 4) {
-        for (const o of en.open) if (openItems.length < 4 && !openItems.some(x => x.title === up(P.trunc(o, 110)))) openItems.push({ title: up(P.trunc(o, 110)), why: 'From the log, ' + P.formatDateLabel(en.label) + ' (may already be done)', path: lf, effort: (efforts.find(e => o.toLowerCase().includes(e.name.toLowerCase())) || {}).name || '' });
+      if (en.open.length && openItems.length < 16) {
+        for (const o of en.open) if (openItems.length < 16 && !openItems.some(x => x.title === up(P.trunc(o, 110)))) openItems.push({ title: up(P.trunc(o, 110)), why: 'From the log, ' + P.formatDateLabel(en.label) + ' (may already be done)', path: lf, effort: (efforts.find(e => o.toLowerCase().includes(e.name.toLowerCase())) || {}).name || '' });
       }
     }
   }
   out.sessions = sessions.slice(0, 10);
 
   // things that need him: unchecked Immediate todos from effort notes (structured), then open items from the log (free text)
-  const needs = [];
-  for (const e of efforts) for (const t of e.todoOpen.slice(0, 2)) if (needs.length < 6) needs.push({ title: up(P.trunc(t, 110)), why: 'Immediate todo in ' + e.name, path: e.path, effort: e.name });
-  for (const o of openItems) if (needs.length < 10) needs.push(o);
+  // A snoozed item is hidden until its date (or for good). Its key is its note and its text, so editing the text brings it back.
+  const withKey = n => Object.assign({ key: `${n.path}::${n.title}` }, n);
+  const snoozeOf = n => { const u = (S.snoozed || {})[n.key]; return u === 'forever' || (u && u > today) ? u : null; };
+  const todos = efforts.map(e => e.todoOpen.map(t => withKey({ title: up(P.trunc(t, 110)), why: 'Immediate todo in ' + e.name, path: e.path, effort: e.name })));
+  const logItems = openItems.map(withKey);
+  const needs = [...todos.flatMap(list => list.filter(n => !snoozeOf(n)).slice(0, 2)).slice(0, 6), ...logItems.filter(n => !snoozeOf(n)).slice(0, 4)];
   out.needs = needs;
+  out.snoozed = [...todos.flat(), ...logItems].filter(snoozeOf).map(n => Object.assign({ until: snoozeOf(n) }, n));
 
   // layers
   const atlasFiles = (await walk(io, join(R, 'Atlas'))).filter(f => /\.md$/.test(f) && !/^(README|Library)\.md$/.test(base(f)));

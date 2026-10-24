@@ -327,6 +327,11 @@ function setFrontmatterStatus(text, value) {
   return text.slice(0, 4) + next + text.slice(4 + block.length);
 }
 
+function addDays(iso, n) {
+  const [y, m, d] = iso.split('-').map(Number);
+  return new Date(Date.UTC(y, m - 1, d + n)).toISOString().slice(0, 10);
+}
+
 function dayNumber(iso) {
   const [y, m, d] = iso.slice(0, 10).split('-').map(Number);
   return Math.round(Date.UTC(y, m - 1, d) / 864e5);
@@ -352,5 +357,5 @@ function weekBuckets(dates, todayIso, n) {
 module.exports = {
   clean, trunc, splitFrontmatter, sections, listItems, parseStatus, isKanban, parseKanban, parseTables, money,
   parsePrices, parseSteps, parseTodoGroups, pickLever, pickLeverItem, checkOffItem, completeBoardCard, kanbanLanes, addBoardCard, addTodoItem, appendCapture, formatMeetingEntry, newEffortReadme, parseProposal, parseLog, formatDateLabel, formatIso,
-  setFrontmatterStatus, daysBetween, weekBuckets
+  setFrontmatterStatus, addDays, daysBetween, weekBuckets
 };

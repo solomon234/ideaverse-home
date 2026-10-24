@@ -41,6 +41,8 @@ class HomeView extends ItemView {
     this.ui = mount(this.contentEl, {
       open: path => plugin.openPath(path),
       setProposalStatus: (path, status) => plugin.setProposalStatus(path, status),
+      snooze: (key, how) => plugin.snooze(key, how),
+      unsnooze: key => plugin.unsnooze(key),
       claudeRun: (kind, payload) => plugin.claudeRun(kind, payload),
       claudeCancel: () => plugin.claudeCancel(),
       appendLog: text => plugin.appendLog(text),
@@ -245,6 +247,27 @@ module.exports = class IdeaverseHome extends Plugin {
       new Notice(`Ideaverse home: could not log the meeting. ${e.message}`);
       return false;
     }
+  }
+
+  // Hides a "Needs you" item for a day, a week or for good. Kept in the plugin's settings, never in a note.
+  async snooze(key, how) {
+    const today = localIso(), until = how === 'forever' ? 'forever' : P.addDays(today, how === 'week' ? 7 : 1);
+    const kept = {};
+    for (const [k, v] of Object.entries(this.settings.snoozed || {})) if (v === 'forever' || v > today) kept[k] = v; // drops expired ones
+    kept[key] = until;
+    this.settings.snoozed = kept;
+    await this.saveSettings();
+    await this.refresh();
+    return true;
+  }
+
+  async unsnooze(key) {
+    const kept = Object.assign({}, this.settings.snoozed);
+    delete kept[key];
+    this.settings.snoozed = kept;
+    await this.saveSettings();
+    await this.refresh();
+    return true;
   }
 
   // Adds a drafted entry (from "Draft today's log entry") after checking it has the log's shape.

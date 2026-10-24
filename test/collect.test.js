@@ -128,3 +128,23 @@ test('session logs: day files in monthly folders come first, then monthly files'
   assert.deepStrictEqual(d.sessions.map(s => s.title), ['Sync', 'Evening', 'Morning', 'Old month']);
   assert.deepStrictEqual(d.needs.map(n => n.title), ['New thing', 'Old thing']);
 });
+
+test('snoozed needs are hidden until their date, listed separately, and replaced by the next item', async () => {
+  const root = makeVault({
+    'Efforts/A/README.md': '# A\n## Todo List\n### Immediate\n- [ ] One\n- [ ] Two\n- [ ] Three\n',
+    'AIOS/Logs/log-2026-10.md': '**2026-10-01** — T\n- Open: log a; log b\n'
+  });
+  const run = snoozed => collect(nodeIO(root), { rootFolder: '', snoozed }, '2026-10-23');
+  const base = await run({});
+  assert.deepStrictEqual(base.needs.map(n => n.title), ['One', 'Two', 'Log a', 'Log b']);
+  assert.deepStrictEqual(base.snoozed, []);
+  const one = base.needs[0].key, logA = base.needs[2].key;
+  assert.strictEqual(one, 'Efforts/A/README.md::One');
+
+  const d = await run({ [one]: '2026-10-24', [logA]: 'forever', 'gone::x': '2026-10-01' });
+  assert.deepStrictEqual(d.needs.map(n => n.title), ['Two', 'Three', 'Log b'], 'snoozed items leave, the next one steps up');
+  assert.deepStrictEqual(d.snoozed.map(n => [n.title, n.until]), [['One', '2026-10-24'], ['Log a', 'forever']]);
+
+  const later = await collect(nodeIO(root), { rootFolder: '', snoozed: { [one]: '2026-10-24' } }, '2026-10-24');
+  assert.strictEqual(later.needs[0].title, 'One', 'a day snooze ends on its date');
+});
