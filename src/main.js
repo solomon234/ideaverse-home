@@ -115,6 +115,14 @@ module.exports = class IdeaverseHome extends Plugin {
     return prev;
   }
 
+  async ensureFolder(dir) {
+    let at = '';
+    for (const part of dir.split('/').filter(Boolean)) {
+      at = at ? `${at}/${part}` : part;
+      if (!this.app.vault.getAbstractFileByPath(at)) await this.app.vault.createFolder(at);
+    }
+  }
+
   underRoot(rel) { const r = (this.settings.rootFolder || '').replace(/\/+$/, ''); return r ? `${r}/${rel}` : rel; }
 
   // Ticks off the lever in its source note (or moves its Kanban card to the done lane). The Notice offers Undo,
@@ -173,8 +181,7 @@ module.exports = class IdeaverseHome extends Plugin {
       if (P.appendCapture('', time, text) === null) throw new Error('Write something to capture.');
       if (f instanceof TFile) await this.app.vault.process(f, t => P.appendCapture(t, time, text));
       else {
-        const dir = path.split('/').slice(0, -1).join('/');
-        if (!this.app.vault.getAbstractFileByPath(dir)) await this.app.vault.createFolder(dir);
+        await this.ensureFolder(path.split('/').slice(0, -1).join('/'));
         await this.app.vault.create(path, `# Scratch ${day}\n\n` + P.appendCapture('', time, text));
       }
       new Notice(`Captured in ${path.split('/').pop()}`);
@@ -212,12 +219,12 @@ module.exports = class IdeaverseHome extends Plugin {
     try {
       if (!String(m.title || '').trim()) throw new Error('Give the meeting a title.');
       if (!/^\d{4}-\d{2}-\d{2}$/.test(m.date || '')) throw new Error('Pick a date.');
-      const path = this.underRoot(`AIOS/Logs/log-${m.date.slice(0, 7)}.md`), entry = P.formatMeetingEntry(m);
+      const month = m.date.slice(0, 7);
+      const path = this.underRoot(this.settings.logLayout === 'day' ? `AIOS/Logs/${month}/log-${m.date}.md` : `AIOS/Logs/log-${month}.md`), entry = P.formatMeetingEntry(m);
       const f = this.app.vault.getAbstractFileByPath(path);
       if (f instanceof TFile) await this.app.vault.process(f, text => text.replace(/\s*$/, '') + '\n\n' + entry);
       else {
-        const dir = path.split('/').slice(0, -1).join('/');
-        if (!this.app.vault.getAbstractFileByPath(dir)) await this.app.vault.createFolder(dir);
+        await this.ensureFolder(path.split('/').slice(0, -1).join('/'));
         await this.app.vault.create(path, entry);
       }
       new Notice(`Logged "${m.title.trim()}" in ${path.split('/').pop()}`);
@@ -260,6 +267,8 @@ class HomeSettings extends PluginSettingTab {
       .addText(t => t.setValue(s.rootFolder).onChange(async v => { s.rootFolder = v.trim(); await save(); }));
     new Setting(el).setName('Open on startup').setDesc('Open the dashboard when Obsidian starts.')
       .addToggle(t => t.setValue(s.openOnStartup).onChange(async v => { s.openOnStartup = v; await save(); }));
+    new Setting(el).setName('Session log files').setDesc('Where + Meeting writes. Both layouts are always read.')
+      .addDropdown(d => d.addOption('month', 'One file per month (AIOS/Logs/log-YYYY-MM.md)').addOption('day', 'One file per day (AIOS/Logs/YYYY-MM/log-YYYY-MM-DD.md)').setValue(s.logLayout).onChange(async v => { s.logLayout = v; await save(); }));
     new Setting(el).setName('Dim an effort after (days)').setDesc('Efforts with no change for this long fade on their screen.')
       .addText(t => t.setValue(String(s.staleDays)).onChange(async v => { const n = parseInt(v, 10); if (n > 0) { s.staleDays = n; await save(); } }));
     new Setting(el).setName('Per-effort overrides').setDesc('JSON keyed by effort folder name. Supports "lever" (text) and "art" (a picture that cannot be read from a note, for example a map of services).')

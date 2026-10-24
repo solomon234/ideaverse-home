@@ -94,6 +94,10 @@ test('new effort, meeting log and lever completion write what they say they writ
   assert.strictEqual(files['V/AIOS/Logs/log-2026-10.md'], '---\n**2026-10-01** — First\n---\n\n**2026-10-23 (meeting)** — Sync\n- With: Sam\n- Outcome: ok\n- Open: a; b\n---\n');
   assert.strictEqual(await plugin.logMeeting({ date: '2026-11-02', title: 'New month' }), true);
   assert.ok(files['V/AIOS/Logs/log-2026-11.md'].startsWith('**2026-11-02 (meeting)** — New month'));
+  plugin.settings.logLayout = 'day';
+  assert.strictEqual(await plugin.logMeeting({ date: '2026-12-03', title: 'Day layout' }), true);
+  assert.strictEqual(files['V/AIOS/Logs/2026-12/log-2026-12-03.md'], '**2026-12-03 (meeting)** — Day layout\n---\n');
+  plugin.settings.logLayout = 'month';
   assert.strictEqual(await plugin.logMeeting({ date: 'nope', title: 'x' }), false);
   assert.strictEqual(await plugin.logMeeting({ date: '2026-10-23', title: '  ' }), false);
 

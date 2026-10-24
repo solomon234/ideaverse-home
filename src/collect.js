@@ -7,6 +7,7 @@ const P = require('./parse');
 const DEFAULT_SETTINGS = {
   rootFolder: '', // folder that holds Efforts, AIOS, Atlas and Calendar; empty means the vault root
   openOnStartup: false,
+  logLayout: 'month', // where + Meeting writes: 'month' (AIOS/Logs/log-YYYY-MM.md) or 'day' (AIOS/Logs/YYYY-MM/log-YYYY-MM-DD.md); both layouts are always read
   staleDays: 60,
   weeks: 14,
   // Per-effort overrides keyed by the effort's folder name: { lever: 'text', art: { kind: 'services', ... } }.
@@ -142,10 +143,18 @@ async function collect(io, settings, today) {
 
   // session logs, newest first
   const ldir = join(R, 'AIOS/Logs');
-  const logs = (await io.list(ldir).catch(() => ({ files: [] }))).files.filter(f => /log-\d{4}-\d{2}\.md$/.test(f)).sort().reverse();
+  // Both layouts are read: day files (in monthly folders, newest first) come before the monthly files, which are older history.
+  const top = await io.list(ldir).catch(() => ({ files: [], folders: [] }));
+  const dayFiles = [];
+  for (const folder of top.folders.filter(f => /\/\d{4}-\d{2}$/.test(f)).sort().reverse().slice(0, 2)) {
+    const l = await io.list(folder).catch(() => ({ files: [] }));
+    dayFiles.push(...l.files.filter(f => /log-\d{4}-\d{2}-\d{2}\.md$/.test(f)));
+  }
+  dayFiles.sort((a, b) => (base(a) < base(b) ? 1 : -1));
+  const logs = [...dayFiles.slice(0, 10), ...top.files.filter(f => /log-\d{4}-\d{2}\.md$/.test(f)).sort().reverse().slice(0, 2)];
   const sessions = [], openItems = [];
   const up = s => s.charAt(0).toUpperCase() + s.slice(1);
-  for (const lf of logs.slice(0, 2)) {
+  for (const lf of logs) {
     const entries = P.parseLog(await readSafe(io, lf)).reverse();
     for (const en of entries) {
       sessions.push({ date: P.formatDateLabel(en.label), title: P.trunc(en.title || 'Session', 90), path: lf });

@@ -115,3 +115,16 @@ test('the todo target is the board\'s first open lane, else the README Immediate
   assert.deepStrictEqual([by('B').kind, by('B').path], ['board', 'Efforts/B/board.md']);
   assert.strictEqual(by('C').label, 'a new Immediate list in the README');
 });
+
+test('session logs: day files in monthly folders come first, then monthly files', async () => {
+  const root = makeVault({
+    'Efforts/A/README.md': '# A\n',
+    'AIOS/Logs/log-2026-10.md': '**2026-10-01** — Old month\n- Open: old thing\n',
+    'AIOS/Logs/2026-10/log-2026-10-24.md': '**2026-10-24** — Morning\n---\n**2026-10-24** — Evening\n- Open: new thing\n---\n',
+    'AIOS/Logs/2026-10/log-2026-10-25.md': '**2026-10-25 (meeting)** — Sync\n---\n',
+    'AIOS/Logs/2026-10/notes.md': 'not a log'
+  });
+  const d = await collect(nodeIO(root), { rootFolder: '' }, '2026-10-26');
+  assert.deepStrictEqual(d.sessions.map(s => s.title), ['Sync', 'Evening', 'Morning', 'Old month']);
+  assert.deepStrictEqual(d.needs.map(n => n.title), ['New thing', 'Old thing']);
+});

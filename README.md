@@ -21,6 +21,7 @@ It is opinionated: it assumes a vault laid out like this, and shows a "No effort
   Efforts/<name>/*.md           an optional Kanban board (obsidian-kanban format) is picked up automatically
   AIOS/Proposals/*.md           frontmatter: status (pending, draft, promoted, dismissed), proposed-to, topic, session
   AIOS/Logs/log-YYYY-MM.md      entries start with **YYYY-MM-DD** - Title; a "- Open:" line lists what is still open
+  AIOS/Logs/YYYY-MM/log-YYYY-MM-DD.md   the same entries, one file per day; both layouts are read
   Atlas/   Calendar/            counted; Calendar reads YYYY-MM-DD.md daily notes
 ```
 
@@ -36,7 +37,7 @@ It is opinionated: it assumes a vault laid out like this, and shows a "No effort
   - *+ Effort*: creates `Efforts/<name>/README.md` from a small template;
   - the add-a-todo box on an effort's screen: adds one `- [ ]` line to the end of the note's Immediate list (or a card to the first open lane of its Kanban board); if the note has no Immediate list, a `## Todo List` / `### Immediate` is added at the end. The line under the box says which;
   - *+ Capture*: appends a timestamped bullet under a `## Quick capture` heading in today's `AIOS/Scratch/scratch-YYYY-MM-DD.md` (created if needed);
-  - *+ Meeting*: appends one entry to the end of that month's `AIOS/Logs/log-YYYY-MM.md` (creating the file if needed) in the form `**date (meeting)** — Title`, with optional `With`, `Outcome` and `Open` lines.
+  - *+ Meeting*: appends one entry to the end of that month's `AIOS/Logs/log-YYYY-MM.md`, or, with the *Session log files* setting on "per day", to `AIOS/Logs/YYYY-MM/log-YYYY-MM-DD.md` (creating the file if needed) in the form `**date (meeting)** — Title`, with optional `With`, `Outcome` and `Open` lines.
 
   It never deletes notes and never rewrites earlier text.
 - **Runs** `git log` (through Node's `child_process`) on each effort folder to build the activity strip. If git is not installed, or the vault is not a git repository, the strip is empty and everything else works. This is why the plugin is desktop-only.
