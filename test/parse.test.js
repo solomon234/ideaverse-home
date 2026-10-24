@@ -110,3 +110,35 @@ test('date math and weekly buckets', () => {
   assert.strictEqual(w[12], 2);
   assert.strictEqual(w.reduce((a, b) => a + b, 0), 4); // 2026-07-01 is before the window
 });
+
+test('checkOffItem ticks the matching open item, including wrapped ones, and skips code fences', () => {
+  const note = '# x\n```\n- [ ] Ship it\n```\n- [ ] Plan\n- [ ] Ship it\n  and wrap\n- [x] Ship it';
+  assert.strictEqual(P.checkOffItem(note, 'Ship it and wrap'), '# x\n```\n- [ ] Ship it\n```\n- [ ] Plan\n- [x] Ship it\n  and wrap\n- [x] Ship it');
+  assert.strictEqual(P.checkOffItem(note, 'Plan').includes('- [x] Plan'), true);
+  assert.strictEqual(P.checkOffItem(note, 'Missing'), null);
+});
+
+test('completeBoardCard moves the card to the done lane, checked', () => {
+  const board = '---\n\nkanban-plugin: board\n\n---\n\n## new\n\n- [ ] One [[a#^b|(details)]]\n- [ ] Two\n\n\n## in progress\n\n\n## done\n\n- [x] Old\n\n\n%% kanban:settings\n```\n{}\n```\n%%';
+  const out = P.completeBoardCard(board, 'One');
+  assert.ok(out.includes('## new\n\n- [ ] Two\n'));
+  assert.ok(out.includes('## done\n\n- [x] Old\n- [x] One [[a#^b|(details)]]\n'));
+  assert.deepStrictEqual(P.parseKanban(out).map(c => [c.t, c.d]), [['Two', false], ['Old', true], ['One', true]]);
+  const empty = P.completeBoardCard('## new\n\n- [ ] One\n\n## done\n\n\n%% kanban:settings\n%%', 'One');
+  assert.ok(empty.includes('## done\n\n- [x] One\n'));
+  assert.strictEqual(P.completeBoardCard('## todo\n- [ ] One', 'One'), '## todo\n- [x] One');
+});
+
+test('formatMeetingEntry is read back by parseLog, with its open items', () => {
+  const e = P.formatMeetingEntry({ date: '2026-10-23', title: 'Partner sync', with: ' Sam,  Lee ', outcome: 'Agreed\nthe pilot', open: 'Send plan; ; Book Jetson backup' });
+  assert.strictEqual(e, '**2026-10-23 (meeting)** — Partner sync\n- With: Sam, Lee\n- Outcome: Agreed the pilot\n- Open: Send plan; Book Jetson backup\n---\n');
+  const [en] = P.parseLog(e);
+  assert.deepStrictEqual([en.title, en.open], ['Partner sync', ['Send plan', 'Book Jetson backup']]);
+});
+
+test('a new effort README reads back as an effort with a lever', () => {
+  const { fm, body } = P.splitFrontmatter(P.newEffortReadme('Kitchen', '2026-10-23'));
+  const secs = P.sections(body);
+  assert.strictEqual(P.parseStatus(fm, body, secs).tone, 'active');
+  assert.strictEqual(P.pickLever(secs), 'Write down the first move');
+});

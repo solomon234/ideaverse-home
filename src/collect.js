@@ -42,11 +42,6 @@ function firstParagraph(body, secs) {
   return P.trunc(P.clean(lines.join(' ')), 260);
 }
 
-function leverFromKanban(cards) {
-  const open = cards.find(c => !c.d);
-  return open ? P.trunc(open.t, 150) : '';
-}
-
 async function collectEffort(io, folder, cfg, S, today) {
   const name = base(folder), readmePath = join(folder, 'README.md');
   if (!await io.exists(readmePath)) return null;
@@ -79,7 +74,14 @@ async function collectEffort(io, folder, cfg, S, today) {
   if (art.kind === 'pipeline') { const all = art.groups.flatMap(g => g.items); facts.push(`${all.filter(i => !i.c).length} open of ${all.length} todo items`); }
   if (art.kind === 'ladder') facts.push(`${art.steps.filter(s => s.c).length} of ${art.steps.length} steps done`);
 
-  const lever = ov.lever || (kanban ? leverFromKanban(kanban.cards) : '') || P.pickLever(secs);
+  // The lever, and where it comes from so it can be ticked off. A lever set in settings has no source.
+  let lever = '', leverRef = null;
+  if (ov.lever) lever = ov.lever;
+  else {
+    const card = kanban && kanban.cards.find(c => !c.d), pick = P.pickLeverItem(secs);
+    if (card) { lever = P.trunc(card.t, 150); leverRef = { kind: 'board', path: kanban.path, text: card.t }; }
+    else if (pick) { lever = P.trunc(pick.t, 150); if (pick.checked === false) leverRef = { kind: 'todo', path: readmePath, text: pick.t }; }
+  }
 
   let dates = [];
   try { dates = (await io.gitDates(folder)) || []; } catch (e) { dates = []; }
@@ -90,7 +92,7 @@ async function collectEffort(io, folder, cfg, S, today) {
   return {
     id: name.toLowerCase().replace(/[^a-z0-9]+/g, '-'), name, short: ov.short || (name.length > 18 ? name.split(/\s+/).slice(0, 2).join(' ') : name),
     folder, path: readmePath, boardPath: kanban ? kanban.path : null,
-    status: st.label, tone: st.tone, lever, summary: firstParagraph(body, secs), facts,
+    status: st.label, tone: st.tone, lever, leverRef, summary: firstParagraph(body, secs), facts,
     last, daysAgo: P.daysBetween(last, today), weeks, art,
     todoOpen: todo.filter(g => /immediate/i.test(g.title)).flatMap(g => g.items.filter(i => !i.c).map(i => i.t))
   };

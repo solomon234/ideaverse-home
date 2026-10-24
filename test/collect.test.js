@@ -87,3 +87,17 @@ test('Efforts/Archived is not an effort, and its efforts are listed as archived'
   assert.strictEqual(d.efforts[0].folder, 'Efforts/Live');
   assert.deepStrictEqual(d.archived.map(a => [a.name, a.folder]), [['Old', 'Efforts/Archived/Old']]);
 });
+
+test('the lever carries its source, except when set in settings', async () => {
+  const root = makeVault({
+    'Efforts/A/README.md': '# A\n## Todo List\n### Immediate\n- [ ] Do a\n',
+    'Efforts/B/README.md': '# B\n',
+    'Efforts/B/board.md': '---\n\nkanban-plugin: board\n\n---\n\n## new\n\n- [ ] Card [[x#^y|(details)]]\n\n## done\n',
+    'Efforts/C/README.md': '# C\n- [ ] c\n'
+  });
+  const d = await collect(nodeIO(root), { rootFolder: '', efforts: { C: { lever: 'Mine' } } }, '2026-10-23');
+  const by = n => d.efforts.find(e => e.name === n);
+  assert.deepStrictEqual(by('A').leverRef, { kind: 'todo', path: 'Efforts/A/README.md', text: 'Do a' });
+  assert.deepStrictEqual(by('B').leverRef, { kind: 'board', path: 'Efforts/B/board.md', text: 'Card' });
+  assert.strictEqual(by('C').leverRef, null);
+});

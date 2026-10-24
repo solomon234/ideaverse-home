@@ -188,3 +188,11 @@
 @media (prefers-reduced-motion:reduce){
   .ideaverse-root .iv-track,.ideaverse-root .iv-d,.ideaverse-root .iv-win,.ideaverse-root .iv-dots i,.ideaverse-root .iv-pulse{transition:none;animation:none}
 }
+
+/* forms (new effort, log a meeting) */
+.ideaverse-root .iv-form{display:grid;gap:12px;padding:20px 24px}
+.ideaverse-root .iv-form label{display:grid;gap:4px;font-size:14px;color:var(--iv-muted)}
+.ideaverse-root .iv-form input,.ideaverse-root .iv-form textarea{font:inherit;font-size:16px;color:#fff;background:rgba(255,255,255,.08);border:1px solid var(--iv-edge);border-radius:10px;padding:10px 12px;min-height:44px;color-scheme:dark}
+.ideaverse-root .iv-form .act{display:flex;gap:8px}
+.ideaverse-root .iv-err{margin:0;color:#ffb4b4;font-size:14px}
+.ideaverse-root .iv-lever .iv-btn{margin-top:12px}

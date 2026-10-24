@@ -164,18 +164,82 @@ function parseTodoGroups(secs) {
 }
 
 // The smallest next move: first unchecked item under a "next"-style heading, else the first unchecked anywhere.
-function pickLever(secs) {
+function pickLeverItem(secs) {
   const next = /immediate|next action|^next|to-?do|steps/i;
   for (const s of secs) {
     if (!next.test(s.title)) continue;
     const it = listItems(s.lines).find(x => x.checked === false || (x.checked === null && /next action/i.test(s.title)));
-    if (it) return trunc(it.t, 150);
+    if (it) return it;
   }
   for (const s of secs) {
     const it = listItems(s.lines).find(x => x.checked === false);
-    if (it) return trunc(it.t, 150);
+    if (it) return it;
   }
-  return '';
+  return null;
+}
+function pickLever(secs) {
+  const it = pickLeverItem(secs);
+  return it ? trunc(it.t, 150) : '';
+}
+
+// ---- editing: each function takes a note's text and returns the new text, or null when it cannot find its target ----
+
+// Same comparison listItems uses to build an item's text, plus the Kanban "(details)" link the board parser drops.
+const sameItem = (raw, itemText) => clean(raw).replace(/\s*\(details\)\s*$/i, '') === itemText;
+
+// First unchecked top-level item whose text matches: { start, end (exclusive), raw }. Fenced code is skipped.
+function findOpenItem(lines, itemText) {
+  let fence = false, cur = null;
+  const done = () => cur && sameItem(cur.raw, itemText) ? cur : null;
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i].replace(/\r$/, '');
+    if (/^\s*```/.test(line)) fence = !fence;
+    if (fence) continue;
+    const m = /^(?:- |\d+[.)] )\[ \] (.*)$/.exec(line);
+    if (m) { const hit = done(); if (hit) return hit; cur = { start: i, end: i + 1, raw: m[1] }; continue; }
+    if (/^(?:- |\d+[.)] )/.test(line)) { const hit = done(); if (hit) return hit; cur = null; continue; }
+    if (cur && /^\s{2,}[^\s-]/.test(line)) { cur.raw += ' ' + line.trim(); cur.end = i + 1; continue; }
+    if (!/^\s/.test(line) || line.trim() === '') { const hit = done(); if (hit) return hit; cur = null; }
+  }
+  return done();
+}
+
+function checkOffItem(text, itemText) {
+  const lines = text.split('\n'), it = findOpenItem(lines, itemText);
+  if (!it) return null;
+  lines[it.start] = lines[it.start].replace('[ ]', '[x]');
+  return lines.join('\n');
+}
+
+// Kanban: take the card out of its lane and put it, checked, at the end of the first lane named done/complete/archive.
+// A board without such a lane just gets the card checked in place.
+function completeBoardCard(text, itemText) {
+  const lines = text.split('\n'), it = findOpenItem(lines, itemText);
+  if (!it) return null;
+  const card = lines.splice(it.start, it.end - it.start);
+  card[0] = card[0].replace('[ ]', '[x]');
+  const lane = lines.findIndex(l => /^## /.test(l) && /done|complete|archive/i.test(l));
+  if (lane < 0) { lines.splice(it.start, 0, ...card); return lines.join('\n'); }
+  let end = lines.findIndex((l, i) => i > lane && /^(## |%% )/.test(l));
+  if (end < 0) end = lines.length;
+  while (end - 1 > lane && lines[end - 1].trim() === '') end--;
+  lines.splice(end, 0, ...(end === lane + 1 ? [''] : []), ...card);
+  return lines.join('\n');
+}
+
+// A meeting for the session log, in the shape parseLog reads. Fields are single lines; open items are separated by semicolons.
+function formatMeetingEntry(m) {
+  const one = s => String(s || '').replace(/\s+/g, ' ').trim();
+  const open = String(m.open || '').split(';').map(one).filter(Boolean);
+  const lines = [`**${m.date} (meeting)** — ${one(m.title)}`];
+  if (one(m.with)) lines.push(`- With: ${one(m.with)}`);
+  if (one(m.outcome)) lines.push(`- Outcome: ${one(m.outcome)}`);
+  if (open.length) lines.push(`- Open: ${open.join('; ')}`);
+  return lines.join('\n') + '\n---\n';
+}
+
+function newEffortReadme(name, today) {
+  return `# ${name}\n\n**Status:** active — just started\n**Started:** ${today}\n\n## Overview\n\nOne or two sentences on what this effort is and why it exists.\n\n## Todo List\n\n### Immediate\n\n- [ ] Write down the first move\n`;
 }
 
 function parseProposal(name, text) {
@@ -246,6 +310,6 @@ function weekBuckets(dates, todayIso, n) {
 
 module.exports = {
   clean, trunc, splitFrontmatter, sections, listItems, parseStatus, isKanban, parseKanban, parseTables, money,
-  parsePrices, parseSteps, parseTodoGroups, pickLever, parseProposal, parseLog, formatDateLabel, formatIso,
+  parsePrices, parseSteps, parseTodoGroups, pickLever, pickLeverItem, checkOffItem, completeBoardCard, formatMeetingEntry, newEffortReadme, parseProposal, parseLog, formatDateLabel, formatIso,
   setFrontmatterStatus, daysBetween, weekBuckets
 };

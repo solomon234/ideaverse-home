@@ -40,6 +40,9 @@ class HomeView extends ItemView {
     this.ui = mount(this.contentEl, {
       open: path => plugin.openPath(path),
       setProposalStatus: (path, status) => plugin.setProposalStatus(path, status),
+      completeLever: ref => plugin.completeLever(ref),
+      createEffort: name => plugin.createEffort(name),
+      logMeeting: m => plugin.logMeeting(m),
       archiveEffort: folder => plugin.moveEffort(folder, true),
       restoreEffort: folder => plugin.moveEffort(folder, false)
     });
@@ -108,6 +111,79 @@ module.exports = class IdeaverseHome extends Plugin {
     let prev = '';
     await this.app.vault.process(f, text => { prev = (P.splitFrontmatter(text).fm.status || '').toLowerCase(); return P.setFrontmatterStatus(text, status); });
     return prev;
+  }
+
+  underRoot(rel) { const r = (this.settings.rootFolder || '').replace(/\/+$/, ''); return r ? `${r}/${rel}` : rel; }
+
+  // Ticks off the lever in its source note (or moves its Kanban card to the done lane). The Notice offers Undo,
+  // which puts the note back only if nothing else has changed it since.
+  async completeLever(ref) {
+    const f = ref && this.app.vault.getAbstractFileByPath(ref.path);
+    if (!(f instanceof TFile)) { new Notice('Ideaverse home: the note for this lever no longer exists.'); return false; }
+    let before = null, after = null;
+    await this.app.vault.process(f, text => {
+      const next = ref.kind === 'board' ? P.completeBoardCard(text, ref.text) : P.checkOffItem(text, ref.text);
+      if (next === null) return text;
+      before = text; after = next; return next;
+    });
+    if (after === null) { new Notice('Ideaverse home: could not find that item in the note. It may have been edited.'); return false; }
+    const frag = createFragment();
+    frag.createSpan({ text: `Done: ${P.trunc(ref.text, 70)} ` });
+    const undo = frag.createEl('button', { text: 'Undo' });
+    const note = new Notice(frag, 10000);
+    undo.addEventListener('click', async () => {
+      note.hide();
+      let restored = false;
+      await this.app.vault.process(f, text => { if (text === after) { restored = true; return before; } return text; });
+      new Notice(restored ? 'Undone.' : 'Ideaverse home: the note changed since, so it was left alone.');
+      this.refresh();
+    });
+    await this.refresh();
+    return true;
+  }
+
+  // Creates Efforts/<name>/README.md from a small template. Resolves to the new folder, or '' if nothing was created.
+  async createEffort(name) {
+    name = String(name || '').trim();
+    try {
+      if (!name) throw new Error('Give the effort a name.');
+      if (/[\\/:*?"<>|#^[\]]/.test(name) || /^\./.test(name)) throw new Error('Names cannot contain \\ / : * ? " < > | # ^ [ ] or start with a dot.');
+      if (name.toLowerCase() === ARCHIVE.toLowerCase()) throw new Error(`"${ARCHIVE}" is where archived efforts go.`);
+      const folder = this.underRoot(`Efforts/${name}`);
+      const clash = [folder, this.underRoot(`Efforts/${ARCHIVE}/${name}`)].find(p => this.app.vault.getAbstractFileByPath(p));
+      if (clash) throw new Error(`${clash} already exists.`);
+      if (!this.app.vault.getAbstractFileByPath(this.underRoot('Efforts'))) await this.app.vault.createFolder(this.underRoot('Efforts'));
+      await this.app.vault.createFolder(folder);
+      await this.app.vault.create(`${folder}/README.md`, P.newEffortReadme(name, localIso()));
+      new Notice(`Created ${folder}`);
+      await this.refresh();
+      return folder;
+    } catch (e) {
+      new Notice(`Ideaverse home: could not create the effort. ${e.message}`);
+      return '';
+    }
+  }
+
+  // Appends a meeting to that month's session log (AIOS/Logs/log-YYYY-MM.md), creating the file if needed. Never rewrites earlier text.
+  async logMeeting(m) {
+    try {
+      if (!String(m.title || '').trim()) throw new Error('Give the meeting a title.');
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(m.date || '')) throw new Error('Pick a date.');
+      const path = this.underRoot(`AIOS/Logs/log-${m.date.slice(0, 7)}.md`), entry = P.formatMeetingEntry(m);
+      const f = this.app.vault.getAbstractFileByPath(path);
+      if (f instanceof TFile) await this.app.vault.process(f, text => text.replace(/\s*$/, '') + '\n\n' + entry);
+      else {
+        const dir = path.split('/').slice(0, -1).join('/');
+        if (!this.app.vault.getAbstractFileByPath(dir)) await this.app.vault.createFolder(dir);
+        await this.app.vault.create(path, entry);
+      }
+      new Notice(`Logged "${m.title.trim()}" in ${path.split('/').pop()}`);
+      await this.refresh();
+      return true;
+    } catch (e) {
+      new Notice(`Ideaverse home: could not log the meeting. ${e.message}`);
+      return false;
+    }
   }
 
   // Archiving moves the effort's whole folder to Efforts/Archived/<name>; restoring moves it back to Efforts/<name>.

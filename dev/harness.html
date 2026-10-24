@@ -10,6 +10,9 @@
   const mem = {};
   const api = {
     open: p => window.__log.opened.push(p),
+    completeLever: async r => { (window.__log.levers = window.__log.levers || []).push(r); return true; },
+    createEffort: async n => { (window.__log.created = window.__log.created || []).push(n); return ''; },
+    logMeeting: async m => { (window.__log.meetings = window.__log.meetings || []).push(m); return true; },
     archiveEffort: async f => { window.__log.archived = (window.__log.archived || []).concat(f); return true; },
     restoreEffort: async f => true,
     setProposalStatus: async (p, s) => { const prev = mem[p] || 'pending'; mem[p] = s; window.__log.status.push([p, s]); return prev; }
