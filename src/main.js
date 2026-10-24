@@ -41,6 +41,11 @@ class HomeView extends ItemView {
     this.ui = mount(this.contentEl, {
       open: path => plugin.openPath(path),
       setProposalStatus: (path, status) => plugin.setProposalStatus(path, status),
+      setStatus: (path, word) => plugin.setEffortStatus(path, word),
+      skipLever: key => plugin.skipLever(key),
+      clearSkips: folder => plugin.clearSkips(folder),
+      setOrder: names => plugin.setOrder(names),
+      createDailyNote: date => plugin.createDailyNote(date),
       snooze: (key, how) => plugin.snooze(key, how),
       unsnooze: key => plugin.unsnooze(key),
       claudeRun: (kind, payload) => plugin.claudeRun(kind, payload),
@@ -132,20 +137,18 @@ module.exports = class IdeaverseHome extends Plugin {
 
   underRoot(rel) { const r = (this.settings.rootFolder || '').replace(/\/+$/, ''); return r ? `${r}/${rel}` : rel; }
 
-  // Ticks off the lever in its source note (or moves its Kanban card to the done lane). The Notice offers Undo,
-  // which puts the note back only if nothing else has changed it since.
-  async completeLever(ref) {
-    const f = ref && this.app.vault.getAbstractFileByPath(ref.path);
-    if (!(f instanceof TFile)) { new Notice('Ideaverse home: the note for this lever no longer exists.'); return false; }
+  // Runs transform(text) on a note and offers Undo in a Notice. transform returns the new text, or null if it cannot apply.
+  // Undo puts the note back only if nothing else has changed it since. Resolves to true if the note was changed.
+  async editWithUndo(f, transform, message, failMessage) {
     let before = null, after = null;
     await this.app.vault.process(f, text => {
-      const next = ref.kind === 'board' ? P.completeBoardCard(text, ref.text) : P.checkOffItem(text, ref.text);
-      if (next === null) return text;
+      const next = transform(text);
+      if (next === null || next === text) return text;
       before = text; after = next; return next;
     });
-    if (after === null) { new Notice('Ideaverse home: could not find that item in the note. It may have been edited.'); return false; }
+    if (after === null) { new Notice(failMessage); return false; }
     const frag = createFragment();
-    frag.createSpan({ text: `Done: ${P.trunc(ref.text, 70)} ` });
+    frag.createSpan({ text: message + ' ' });
     const undo = frag.createEl('button', { text: 'Undo' });
     const note = new Notice(frag, 10000);
     undo.addEventListener('click', async () => {
@@ -157,6 +160,68 @@ module.exports = class IdeaverseHome extends Plugin {
     });
     await this.refresh();
     return true;
+  }
+
+  // Ticks off the lever in its source note (or moves its Kanban card to the done lane).
+  async completeLever(ref) {
+    const f = ref && this.app.vault.getAbstractFileByPath(ref.path);
+    if (!(f instanceof TFile)) { new Notice('Ideaverse home: the note for this lever no longer exists.'); return false; }
+    return this.editWithUndo(f, t => (ref.kind === 'board' ? P.completeBoardCard(t, ref.text) : P.checkOffItem(t, ref.text)),
+      `Done: ${P.trunc(ref.text, 70)}`, 'Ideaverse home: could not find that item in the note. It may have been edited.');
+  }
+
+  // Changes the status word on an effort's README, keeping any note after the dash.
+  async setEffortStatus(path, word) {
+    const f = this.app.vault.getAbstractFileByPath(path);
+    if (!(f instanceof TFile)) { new Notice('Ideaverse home: that note no longer exists.'); return false; }
+    return this.editWithUndo(f, t => P.setEffortStatus(t, word), `Status set to ${word}.`, 'Ideaverse home: the status was already that.');
+  }
+
+  // "Not this one": set the lever aside for a week. Kept in settings, not in a note.
+  async skipLever(key) {
+    const today = localIso(), kept = {};
+    for (const [k, v] of Object.entries(this.settings.skipped || {})) if (v > today) kept[k] = v;
+    kept[key] = P.addDays(today, 7);
+    this.settings.skipped = kept;
+    await this.saveSettings();
+    await this.refresh();
+    return true;
+  }
+
+  async clearSkips(folder) {
+    const kept = {};
+    for (const [k, v] of Object.entries(this.settings.skipped || {})) if (!k.startsWith(folder + '/')) kept[k] = v;
+    this.settings.skipped = kept;
+    await this.saveSettings();
+    await this.refresh();
+    return true;
+  }
+
+  // names: effort folder names in the order to show them; an empty list goes back to most recently changed first.
+  async setOrder(names) {
+    this.settings.order = names;
+    await this.saveSettings();
+    await this.refresh();
+    return true;
+  }
+
+  // Creates Calendar/<date>.md from Calendar/templates/daily-note.md if there is one. Resolves to the note's path ('' on failure).
+  async createDailyNote(date) {
+    try {
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(date || '')) throw new Error('Pick a date.');
+      const path = this.underRoot(`Calendar/${date}.md`);
+      if (this.app.vault.getAbstractFileByPath(path)) return path;
+      const tpl = this.app.vault.getAbstractFileByPath(this.underRoot('Calendar/templates/daily-note.md'));
+      const text = P.dailyNoteFrom(tpl instanceof TFile ? await this.app.vault.read(tpl) : '', date);
+      await this.ensureFolder(path.split('/').slice(0, -1).join('/'));
+      await this.app.vault.create(path, text);
+      new Notice(`Created ${path.split('/').pop()}`);
+      await this.refresh();
+      return path;
+    } catch (e) {
+      new Notice(`Ideaverse home: could not create the daily note. ${e.message}`);
+      return '';
+    }
   }
 
   // Adds a todo to the note named by an effort's todoTarget. Only adds a line; nothing existing is rewritten.

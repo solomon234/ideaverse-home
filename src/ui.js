@@ -2,6 +2,10 @@
 // The dashboard view. Plain DOM, no framework. mount(root, api) returns { update(data), destroy() }.
 //   api.open(path)                       open a note
 //   api.setProposalStatus(path, status)  rewrite a proposal's status line; resolves to the previous status
+//   api.setStatus(path, word)            change an effort's status word (active, waiting, paused, not started); resolves to true if it changed
+//   api.skipLever(key) / api.clearSkips(folder)   set the lever aside for a week / bring skipped ones back
+//   api.setOrder(names)                  effort folder names in display order; [] resets to most recent first
+//   api.createDailyNote(date)            create Calendar/<date>.md; resolves to its path ('' on failure)
 //   api.snooze(key, 'day'|'week'|'forever')  hide a Needs-you item; api.unsnooze(key) brings it back
 //   api.claudeRun(kind, payload)         kind 'ask' | 'triage' | 'log'; resolves to { ok, text, error, mode, draft, cancelled }
 //   api.claudeCancel()                   stop a background run
@@ -77,7 +81,7 @@ const art = {
 
 function mount(root, api) {
   const doc = root.ownerDocument;
-  let data = null, claude = { title: '', status: 'idle', text: '', draft: false, id: 0 }, cur = 0, win = null, trayRows = [], pal = { open: false, sel: 0, items: [] }, needsOpen = false, snoozeFor = -1, snoozedOpen = false;
+  let data = null, claude = { title: '', status: 'idle', text: '', draft: false, id: 0 }, cur = 0, win = null, trayRows = [], pal = { open: false, sel: 0, items: [] }, needsOpen = false, snoozeFor = -1, snoozedOpen = false, calMonth = '', calSel = '';
 
   root.classList.add('ideaverse-root');
   root.setAttribute('tabindex', '-1');
@@ -121,14 +125,14 @@ function mount(root, api) {
       const bars = e.weeks.map((w, k) => { const h = w ? 4 + Math.sqrt(w / max) * 26 : 2; return `<rect class="${w ? '' : 'z'}" x="${k * 11}" y="${32 - h}" width="8" height="${h}" rx="2"/>`; }).join('');
       const age = e.daysAgo <= 0 ? 'today' : e.daysAgo === 1 ? 'yesterday' : e.daysAgo + ' days ago';
       return `<section class="iv-slide ${old ? 'stale' : ''}" style="--h:${HUES[i % HUES.length]}" role="group" aria-roledescription="slide" aria-label="${i + 1} of ${N}: ${esc(e.name)}" ${i === cur ? '' : 'inert'}>
-        <div class="iv-copy"><div class="iv-eyebrow"><span class="iv-st ${e.tone}">${esc(e.status)}</span><span>${i + 1} of ${N}</span><span class="iv-age ${old ? 'old' : ''}">Changed ${age} · ${fmtIso(e.last)}</span></div>
+        <div class="iv-copy"><div class="iv-eyebrow"><span class="iv-stwrap"><button class="iv-st ${e.tone}" data-status-menu="${i}" aria-haspopup="true" aria-expanded="false" aria-label="Status: ${esc(e.status)}. Change">${esc(e.status)}</button></span><span>${i + 1} of ${N}</span><span class="iv-age ${old ? 'old' : ''}">Changed ${age} · ${fmtIso(e.last)}</span></div>
           <h1 ${e.name.length > 16 ? 'style="font-size:clamp(30px,4vw,60px)"' : ''}>${esc(e.name)}</h1>
-          ${e.lever ? `<div class="iv-lever iv-glass"><small>The lever</small><p>${esc(e.lever)}</p>${e.leverRef ? `<button class="iv-btn" data-lever="${i}">Mark done</button>` : ''}</div>` : ''}
+          ${e.lever ? `<div class="iv-lever iv-glass"><small>The lever</small><p>${esc(e.lever)}</p><div class="iv-lbtns">${e.leverRef ? `<button class="iv-btn" data-lever="${i}">Mark done</button>` : ''}${e.canSkip ? `<button class="iv-btn" data-skip="${i}">Not this one</button>` : ''}${e.skipped ? `<button class="iv-snb" data-unskip="${i}">Show skipped (${e.skipped})</button>` : ''}</div></div>` : ''}
           <form class="iv-add" data-form="todo" data-i="${i}"><input name="text" aria-label="Add a todo to ${esc(e.name)}" placeholder="Add a todo…" autocomplete="off" maxlength="200"><button class="iv-btn" type="submit">Add</button><small>Goes to ${esc(e.todoTarget.label)}.</small></form>
           ${data.claudeMode && data.claudeMode !== 'off' ? `<form class="iv-add" data-form="ask" data-i="${i}"><input name="q" aria-label="Ask Claude about ${esc(e.name)}" placeholder="Ask Claude about this effort…" autocomplete="off" maxlength="300"><button class="iv-btn" type="submit">Ask</button></form>` : ''}
           <div class="iv-spark"><svg width="154" height="34" viewBox="0 0 154 34" role="img" aria-label="Changes per week, last ${e.weeks.length} weeks: ${e.weeks.join(', ')}">${bars}</svg><small>Weeks with changes, last ${e.weeks.length}. From git history of this folder.</small></div>
           <details><summary>About this effort</summary>${e.summary ? `<p>${esc(e.summary)}</p>` : ''}${e.facts.length ? `<ul class="iv-facts">${e.facts.map(f => `<li>${esc(f)}</li>`).join('')}</ul>` : ''}
-            <div class="iv-links"><button class="iv-btn" data-open="${esc(e.path)}">Open README</button>${e.boardPath ? `<button class="iv-btn" data-open="${esc(e.boardPath)}">Open board</button>` : ''}<button class="iv-btn" data-archive="${esc(e.folder)}">Archive effort</button></div></details></div>
+            <div class="iv-links"><button class="iv-btn" data-open="${esc(e.path)}">Open README</button>${e.boardPath ? `<button class="iv-btn" data-open="${esc(e.boardPath)}">Open board</button>` : ''}<button class="iv-btn" data-move="-1" data-i="${i}" ${i === 0 ? 'disabled' : ''}>Move earlier</button><button class="iv-btn" data-move="1" data-i="${i}" ${i === N - 1 ? 'disabled' : ''}>Move later</button>${data.efforts.some(x => x.pinned) ? '<button class="iv-btn" data-reset-order>Reset order</button>' : ''}<button class="iv-btn" data-archive="${esc(e.folder)}">Archive effort</button></div></details></div>
         <div class="iv-art iv-glass">${art[e.art.kind](e.art)}</div></section>`;
     }).join('');
     $('.iv-dots').innerHTML = data.efforts.map((e, i) => `<button aria-label="${esc(e.short)}" data-i="${i}"><i></i></button>`).join('');
@@ -169,9 +173,25 @@ function mount(root, api) {
     return `<ol class="iv-tl">${days.map(d => `<li class="iv-day"><div class="iv-dl"><b>${esc(d.date)}</b><span>${esc(dayName(d.iso))}</span></div><ul>${d.items.map(s =>
       `<li><button class="iv-ent" data-open="${esc(s.path)}"><span class="iv-et">${esc(s.title)}</span>${s.tag || s.open ? `<span class="iv-meta">${s.tag ? `<span>${esc(s.tag)}</span>` : ''}${s.open ? `<span class="iv-op">${s.open} open</span>` : ''}</span>` : ''}</button></li>`).join('')}</ul></li>`).join('')}</ol>`;
   }
+  function calendarView() {
+    const L = data.layers.calendar, month = calMonth || (calMonth = data.today.slice(0, 7)), sel = calSel || (calSel = data.today);
+    const [y, mo] = month.split('-').map(Number), pad = n => String(n).padStart(2, '0');
+    const lead = new Date(y, mo - 1, 1).getDay(), count = new Date(y, mo, 0).getDate();
+    let cells = '<span></span>'.repeat(lead);
+    for (let d = 1; d <= count; d++) {
+      const iso = `${month}-${pad(d)}`, n = (L.days[iso] || []).length;
+      cells += `<button class="iv-cd ${n ? 'has' : ''} ${iso === data.today ? 'today' : ''}" data-cal-day="${iso}" aria-pressed="${iso === sel}" aria-label="${fmtIso(iso)}${n ? ', ' + n + (n === 1 ? ' note' : ' notes') : ''}">${d}${n ? '<i></i>' : ''}</button>`;
+    }
+    const notes = L.days[sel] || [], hasDaily = notes.some(n => n.daily);
+    const head = new Date(y, mo - 1, 1).toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+    return ['Calendar', `<div class="iv-body-pad"><div class="iv-calnav"><button class="iv-btn" data-cal-nav="-1" aria-label="Previous month">‹</button><b>${esc(head)}</b><button class="iv-btn" data-cal-nav="1" aria-label="Next month">›</button><button class="iv-btn" data-cal-today>Today</button></div>
+      <div class="iv-cal" role="group" aria-label="${esc(head)}">${['S', 'M', 'T', 'W', 'T', 'F', 'S'].map(w => `<small aria-hidden="true">${w}</small>`).join('')}${cells}</div>
+      <h3 class="iv-gh">${esc(fmtIso(sel))}</h3>${notes.length ? `<ul class="iv-rows">${notes.map(n => `<li><button class="iv-link" data-open="${esc(n.path)}"><b>${esc(n.name)}</b>${n.daily ? '<time>daily note</time>' : ''}</button></li>`).join('')}</ul>` : '<p class="iv-note">No notes on this day.</p>'}${hasDaily ? '' : `<div class="act" style="padding:10px 0 0"><button class="iv-btn p" data-new-daily="${esc(sel)}">Create daily note for ${esc(fmtIso(sel))}</button></div>`}
+      <p class="iv-note">${L.count} daily note${L.count === 1 ? '' : 's'} in the vault. Days with a dot have a note.</p></div>`];
+  }
   const views = {
-    atlas: () => { const L = data.layers.atlas; return ['Atlas', `<div class="iv-void"><b>${L.count}</b>${L.count === 1 ? 'note' : 'notes'} filed in Atlas.</div>${L.waiting.length ? `<ul class="iv-rows">${L.waiting.map(p => `<li class="iv-prop"><span class="t"><span class="iv-tag ${esc(p.status)}">${esc(p.status)}</span>${esc(p.topic)}</span><span class="to">→ ${esc(p.to)}</span><span class="act"><button class="iv-btn" data-open="${esc(p.path)}">Open</button></span></li>`).join('')}</ul><p class="iv-note">Proposals waiting to become notes in Atlas.</p>` : ''}`]; },
-    calendar: () => { const L = data.layers.calendar; return ['Calendar', L.recent.length ? `<ul class="iv-rows">${L.recent.map(c => `<li><button class="iv-link" data-open="${esc(c.path)}"><time>${esc(c.date)}</time></button></li>`).join('')}</ul><p class="iv-note">${L.count} daily note${L.count === 1 ? '' : 's'} in the vault.</p>` : '<div class="iv-void"><b>0</b>daily notes yet.</div>']; },
+    atlas: () => { const L = data.layers.atlas; return ['Atlas', `<div class="iv-body-pad"><input class="iv-filter" data-atlas-filter placeholder="Filter ${L.count} note${L.count === 1 ? '' : 's'}" aria-label="Filter Atlas notes" autocomplete="off">${L.notes.length ? `<ul class="iv-rows iv-atlas">${L.notes.map(n => `<li data-t="${esc((n.name + ' ' + n.folder).toLowerCase())}"><button class="iv-link" data-open="${esc(n.path)}"><b>${esc(n.name)}</b>${n.folder ? `<time>${esc(n.folder)}</time>` : ''}</button></li>`).join('')}</ul><p class="iv-note iv-nomatch" hidden>No note matches.</p>` : '<div class="iv-void"><b>0</b>notes filed in Atlas.</div>'}${L.waiting.length ? `<h3 class="iv-gh">Waiting to be filed</h3><ul class="iv-rows">${L.waiting.map(p => `<li class="iv-prop"><span class="t"><span class="iv-tag ${esc(p.status)}">${esc(p.status)}</span>${esc(p.topic)}</span><span class="to">→ ${esc(p.to)}</span><span class="act"><button class="iv-btn" data-open="${esc(p.path)}">Open</button></span></li>`).join('')}</ul>` : ''}</div>`]; },
+    calendar: calendarView,
     aios: () => ['AIOS · proposals tray', trayRows.length ? `<ul class="iv-rows">${trayRows.map((r, i) => r.marked ? rowMarked(r, i) : rowPending(r, i)).join('')}</ul>${data.claudeMode && data.claudeMode !== 'off' ? '<div class="act"><button class="iv-btn" data-claude-triage>Ask Claude to triage these</button></div>' : ''}<p class="iv-note">${data.proposals.counts.pending} pending and ${data.proposals.counts.draft} draft of ${data.proposals.files} files in Proposals. Marking a proposal edits only its status line; moving its content into the vault is still yours to do.</p>` : '<div class="iv-void"><b>0</b>proposals need a decision.</div>'],
     newEffort: () => ['New effort', `<form class="iv-form" data-form="effort"><label>Name<input name="name" autocomplete="off" required maxlength="80"></label><p class="iv-note">Creates Efforts/&lt;name&gt;/README.md with a status line, an overview and a Todo List with one Immediate item.</p><p class="iv-err" role="alert" hidden></p><div class="act"><button class="iv-btn p" type="submit">Create effort</button></div></form>`],
     meeting: () => ['Log a meeting', `<form class="iv-form" data-form="meeting"><label>Title<input name="title" autocomplete="off" required maxlength="120"></label><label>Date<input name="date" type="date" value="${esc(data.today)}" required></label><label>With<input name="with" autocomplete="off" placeholder="Names, separated by commas"></label><label>Outcome<textarea name="outcome" rows="3" placeholder="What was decided or learned"></textarea></label><label>Open items<input name="open" autocomplete="off" placeholder="Separate with semicolons; they show up under Needs you"></label><p class="iv-note">Adds an entry to the end of that month's log in AIOS/Logs. Earlier entries are not touched.</p><p class="iv-err" role="alert" hidden></p><div class="act"><button class="iv-btn p" type="submit">Add to log</button></div></form>`],
@@ -244,6 +264,29 @@ function mount(root, api) {
     if (t === layer || t.closest('.iv-x')) return showView('efforts');
     if (t === palEl) return closePal();
     const pi = t.closest('.iv-plist [data-i]'); if (pi && pal.items[+pi.dataset.i]) { const it = pal.items[+pi.dataset.i]; closePal(); it.run(); return; }
+    if (!t.closest('.iv-stmenu') && !t.closest('[data-status-menu]')) $$('.iv-stmenu').forEach(m => { m.remove(); });
+    const sm = t.closest('[data-status-menu]');
+    if (sm) {
+      const open = sm.parentNode.querySelector('.iv-stmenu');
+      $$('.iv-stmenu').forEach(m => { m.remove(); });
+      if (!open) sm.insertAdjacentHTML('afterend', `<div class="iv-stmenu" role="menu">${['active', 'waiting', 'paused', 'not started'].map(w => `<button role="menuitem" class="iv-btn" data-status="${w}" data-i="${sm.dataset.statusMenu}">${w.charAt(0).toUpperCase() + w.slice(1)}</button>`).join('')}</div>`);
+      sm.setAttribute('aria-expanded', !open); return;
+    }
+    const stp = t.closest('[data-status]'); if (stp) { const e = data.efforts[+stp.dataset.i]; $$('.iv-stmenu').forEach(m => { m.remove(); }); if (e) api.setStatus(e.path, stp.dataset.status); return; }
+    const sk = t.closest('[data-skip]'); if (sk) { const e = data.efforts[+sk.dataset.skip]; if (e && e.leverKey) api.skipLever(e.leverKey); return; }
+    const usk = t.closest('[data-unskip]'); if (usk) { const e = data.efforts[+usk.dataset.unskip]; if (e) api.clearSkips(e.folder); return; }
+    const mv = t.closest('[data-move]');
+    if (mv) {
+      const names = data.efforts.map(e => e.folder.split('/').pop()), i = +mv.dataset.i, j = i + +mv.dataset.move;
+      if (j >= 0 && j < names.length) { [names[i], names[j]] = [names[j], names[i]]; api.setOrder(names); }
+      return;
+    }
+    if (t.closest('[data-reset-order]')) { api.setOrder([]); return; }
+    const cd = t.closest('[data-cal-day]'); if (cd) { calSel = cd.dataset.calDay; showView('calendar'); const b = winEl.querySelector(`[data-cal-day="${calSel}"]`); if (b) b.focus(); return; }
+    const cn = t.closest('[data-cal-nav]');
+    if (cn) { const [y, m] = calMonth.split('-').map(Number), d = new Date(y, m - 1 + +cn.dataset.calNav, 1); calMonth = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`; showView('calendar'); const b = winEl.querySelector(`[data-cal-nav="${cn.dataset.calNav}"]`); if (b) b.focus(); return; }
+    if (t.closest('[data-cal-today]')) { calMonth = data.today.slice(0, 7); calSel = data.today; showView('calendar'); return; }
+    const nd = t.closest('[data-new-daily]'); if (nd) { api.createDailyNote(nd.dataset.newDaily).then(p => { if (p) { api.open(p); } }); return; }
     if (t.closest('[data-claude-cancel]')) { api.claudeCancel(); return; }
     if (t.closest('[data-claude-triage]')) return startClaude('triage', { paths: data.proposals.tray.map(p => p.path) }, 'Proposal triage');
     if (t.closest('[data-claude-log-draft]')) return startClaude('log', {}, 'Draft log entry');
@@ -290,6 +333,12 @@ function mount(root, api) {
   });
   on(root, 'mouseover', ev => { const c = ev.target.closest('.iv-cell'); if (c) c.closest('.iv-art').querySelector('.iv-cap').innerHTML = `<b>${esc(c.dataset.s)}:</b> ${esc(c.dataset.t)}`; });
   on(root, 'focusin', ev => { const c = ev.target.closest('.iv-cell'); if (c) c.closest('.iv-art').querySelector('.iv-cap').innerHTML = `<b>${esc(c.dataset.s)}:</b> ${esc(c.dataset.t)}`; });
+  on(root, 'input', ev => {
+    const f = ev.target.closest('[data-atlas-filter]'); if (!f) return;
+    const q = f.value.trim().toLowerCase(); let shown = 0;
+    $$('.iv-atlas li').forEach(li => { const hide = !!q && !li.dataset.t.includes(q); li.hidden = hide; if (!hide) shown++; });
+    const nm = $('.iv-nomatch'); if (nm) nm.hidden = shown > 0;
+  });
   on(pin, 'input', () => { pal.sel = 0; renderPal(); });
   on(pin, 'keydown', ev => {
     if (ev.key === 'ArrowDown') { pal.sel = Math.min(pal.sel + 1, pal.items.length - 1); renderPal(); ev.preventDefault(); }

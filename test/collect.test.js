@@ -148,3 +148,28 @@ test('snoozed needs are hidden until their date, listed separately, and replaced
   const later = await collect(nodeIO(root), { rootFolder: '', snoozed: { [one]: '2026-10-24' } }, '2026-10-24');
   assert.strictEqual(later.needs[0].title, 'One', 'a day snooze ends on its date');
 });
+
+test('skipping sets the lever aside until its date; all skipped shows the first again', async () => {
+  const root = makeVault({ 'Efforts/A/README.md': '# A\n## Todo List\n### Immediate\n- [ ] One\n- [ ] Two\n- [ ] Three\n' });
+  const run = (skipped, day = '2026-10-23') => collect(nodeIO(root), { rootFolder: '', skipped }, day).then(d => d.efforts[0]);
+  const a = await run({});
+  assert.deepStrictEqual([a.lever, a.canSkip, a.skipped, a.leverKey], ['One', true, 0, 'Efforts/A/README.md::One']);
+  const b = await run({ 'Efforts/A/README.md::One': '2026-10-30' });
+  assert.deepStrictEqual([b.lever, b.canSkip, b.skipped], ['Two', true, 1]);
+  assert.strictEqual((await run({ 'Efforts/A/README.md::One': '2026-10-30' }, '2026-10-30')).lever, 'One', 'a skip ends on its date');
+  const all = await run({ 'Efforts/A/README.md::One': '2026-10-30', 'Efforts/A/README.md::Two': '2026-10-30', 'Efforts/A/README.md::Three': '2026-10-30' });
+  assert.deepStrictEqual([all.lever, all.canSkip, all.skipped], ['One', false, 3]);
+});
+
+test('order puts chosen efforts first, then the rest by recency; calendar days and atlas notes are listed', async () => {
+  const root = makeVault({
+    'Efforts/A/README.md': '# A\n', 'Efforts/B/README.md': '# B\n', 'Efforts/C/README.md': '# C\n',
+    'Calendar/2026-10-18.md': 'd', 'Calendar/2026-10-18-meeting.md': 'm', 'Calendar/templates/daily-note.md': 't', 'Calendar/README.md': 'r',
+    'Atlas/Concept.md': 'c', 'Atlas/Maps/Library.md': 'l', 'Atlas/Ideas/Deep/Thing.md': 't', 'Atlas/README.md': 'r'
+  });
+  const d = await collect(nodeIO(root), { rootFolder: '', order: ['C', 'A'] }, '2026-10-23');
+  assert.deepStrictEqual(d.efforts.map(e => [e.name, e.pinned]), [['C', true], ['A', true], ['B', false]]);
+  assert.deepStrictEqual(Object.keys(d.layers.calendar.days), ['2026-10-18']);
+  assert.deepStrictEqual(d.layers.calendar.days['2026-10-18'].map(n => [n.name, n.daily]), [['2026-10-18', true], ['2026-10-18-meeting', false]]);
+  assert.deepStrictEqual(d.layers.atlas.notes.map(n => [n.name, n.folder]), [['Concept', ''], ['Thing', 'Ideas/Deep']]);
+});

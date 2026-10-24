@@ -180,3 +180,37 @@ test('snooze stores an expiry in settings only, drops expired ones, and un-snooz
   await plugin.unsnooze('c::d');
   assert.strictEqual('c::d' in plugin.settings.snoozed, false);
 });
+
+test('status, skip, order and daily note actions do what they say', { skip: !fs.existsSync(DIST) && 'run npm run build first' }, async () => {
+  const { Cls, TFile, TFolder } = loadPlugin();
+  globalThis.createFragment = () => ({ createSpan() {}, createEl: () => ({ addEventListener() {} }) });
+  const files = { 'V/Efforts/A/README.md': '# A\n\n**Status:** active — going\n', 'V/Calendar/templates/daily-note.md': 'date: YYYY-MM-DD\n# YYYY-MM-DD\n' };
+  const folders = new Set(['V', 'V/Efforts', 'V/Efforts/A', 'V/Calendar', 'V/Calendar/templates']);
+  const app = {
+    vault: { on: () => ({}), getAbstractFileByPath: p => (files[p] !== undefined ? new TFile(p) : folders.has(p) ? new TFolder(p) : null), process: async (f, fn) => { files[f.path] = fn(files[f.path]); }, read: async f => files[f.path], createFolder: async p => { folders.add(p); }, create: async (p, t) => { files[p] = t; }, adapter: {} },
+    workspace: { onLayoutReady: fn => fn(), getLeavesOfType: () => [] }
+  };
+  const plugin = new Cls(app);
+  await plugin.onload();
+  plugin.settings.rootFolder = 'V';
+
+  assert.strictEqual(await plugin.setEffortStatus('V/Efforts/A/README.md', 'paused'), true);
+  assert.strictEqual(files['V/Efforts/A/README.md'], '# A\n\n**Status:** paused — going\n');
+  assert.strictEqual(await plugin.setEffortStatus('V/Efforts/A/README.md', 'paused'), false, 'no change, no write');
+
+  await plugin.skipLever('V/Efforts/A/README.md::One');
+  assert.ok(plugin.settings.skipped['V/Efforts/A/README.md::One'] > '2026');
+  await plugin.skipLever('V/Efforts/B/README.md::Two');
+  await plugin.clearSkips('V/Efforts/A');
+  assert.deepStrictEqual(Object.keys(plugin.settings.skipped), ['V/Efforts/B/README.md::Two']);
+
+  await plugin.setOrder(['B', 'A']);
+  assert.deepStrictEqual(plugin.saved.order, ['B', 'A']);
+
+  assert.strictEqual(await plugin.createDailyNote('2026-10-24'), 'V/Calendar/2026-10-24.md');
+  assert.strictEqual(files['V/Calendar/2026-10-24.md'], 'date: 2026-10-24\n# 2026-10-24\n');
+  files['V/Calendar/2026-10-24.md'] = 'mine';
+  assert.strictEqual(await plugin.createDailyNote('2026-10-24'), 'V/Calendar/2026-10-24.md');
+  assert.strictEqual(files['V/Calendar/2026-10-24.md'], 'mine', 'an existing note is never overwritten');
+  assert.strictEqual(await plugin.createDailyNote('nope'), '');
+});

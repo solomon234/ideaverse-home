@@ -7,6 +7,8 @@ const P = require('./parse');
 const DEFAULT_SETTINGS = {
   rootFolder: '', // folder that holds Efforts, AIOS, Atlas and Calendar; empty means the vault root
   openOnStartup: false,
+  skipped: {}, // levers set aside: { '<note>::<text>': 'YYYY-MM-DD' (until) }
+  order: [], // effort folder names to show first, in this order; the rest follow by last change
   snoozed: {}, // hidden "Needs you" items: { '<note>::<text>': 'YYYY-MM-DD' (until) | 'forever' }
   claudeMode: 'off', // 'off', 'terminal' (open Terminal with a prompt) or 'background' (run claude -p, read-only, and show the answer)
   claudePath: '', // empty: look in the usual install folders
@@ -84,13 +86,19 @@ async function collectEffort(io, folder, cfg, S, today) {
     ? { kind: 'board', path: kanban.path, label: `the “${kanban.lane.title}” lane of the board` }
     : { kind: 'todo', path: readmePath, label: hasImmediate ? 'Immediate in the README' : 'a new Immediate list in the README' };
 
-  // The lever, and where it comes from so it can be ticked off. A lever set in settings has no source.
-  let lever = '', leverRef = null;
+  // The lever, and where it comes from so it can be ticked off. A lever set in settings has no source and cannot be skipped.
+  // "Not this one" sets a candidate aside for a while; the lever is the first candidate not set aside.
+  let lever = '', leverRef = null, leverKey = '', skipped = 0, canSkip = false;
   if (ov.lever) lever = ov.lever;
   else {
-    const card = kanban && kanban.cards.find(c => !c.d), pick = P.pickLeverItem(secs);
-    if (card) { lever = P.trunc(card.t, 150); leverRef = { kind: 'board', path: kanban.path, text: card.t }; }
-    else if (pick) { lever = P.trunc(pick.t, 150); if (pick.checked === false) leverRef = { kind: 'todo', path: readmePath, text: pick.t }; }
+    const open = kanban ? kanban.cards.filter(c => !c.d) : [];
+    const cands = open.length
+      ? open.map(c => ({ t: c.t, ref: { kind: 'board', path: kanban.path, text: c.t } }))
+      : P.leverCandidates(secs).map(it => ({ t: it.t, ref: it.checked === false ? { kind: 'todo', path: readmePath, text: it.t } : null }));
+    const keyOf = c => `${c.ref ? c.ref.path : readmePath}::${c.t}`, away = c => ((S.skipped || {})[keyOf(c)] || '') > today;
+    const live = cands.filter(c => !away(c)), pick = live[0] || cands[0];
+    skipped = cands.length - live.length; canSkip = live.length > 1;
+    if (pick) { lever = P.trunc(pick.t, 150); leverRef = pick.ref; leverKey = keyOf(pick); }
   }
 
   let dates = [];
@@ -102,7 +110,7 @@ async function collectEffort(io, folder, cfg, S, today) {
   return {
     id: name.toLowerCase().replace(/[^a-z0-9]+/g, '-'), name, short: ov.short || (name.length > 18 ? name.split(/\s+/).slice(0, 2).join(' ') : name),
     folder, path: readmePath, boardPath: kanban ? kanban.path : null,
-    status: st.label, tone: st.tone, lever, leverRef, todoTarget, summary: firstParagraph(body, secs), facts,
+    status: st.label, tone: st.tone, lever, leverRef, leverKey, skipped, canSkip, todoTarget, summary: firstParagraph(body, secs), facts,
     last, daysAgo: P.daysBetween(last, today), weeks, art,
     todoOpen: todo.filter(g => /immediate/i.test(g.title)).flatMap(g => g.items.filter(i => !i.c).map(i => i.t))
   };
@@ -122,6 +130,9 @@ async function collect(io, settings, today) {
     if (e) efforts.push(e);
   }
   efforts.sort((a, b) => a.daysAgo - b.daysAgo);
+  const place = e => { const k = (S.order || []).indexOf(base(e.folder)); return k < 0 ? Infinity : k; };
+  efforts.forEach(e => { e.pinned = place(e) !== Infinity; });
+  efforts.sort((a, b) => (place(a) === place(b) ? 0 : place(a) < place(b) ? -1 : 1)); // stable: unpinned keep their recency order
   out.efforts = efforts;
 
   // archived efforts: folders under Efforts/Archived that still have a README
@@ -181,9 +192,16 @@ async function collect(io, settings, today) {
   // layers
   const atlasFiles = (await walk(io, join(R, 'Atlas'))).filter(f => /\.md$/.test(f) && !/^(README|Library)\.md$/.test(base(f)));
   const calFiles = (await walk(io, join(R, 'Calendar'))).filter(f => /\/\d{4}-\d{2}-\d{2}\.md$/.test(f)).sort().reverse();
+  // every note in Calendar whose name starts with a date (daily notes and meeting notes), by date, for the month grid
+  const calDays = {};
+  for (const f of (await walk(io, join(R, 'Calendar'))).filter(f => /\/\d{4}-\d{2}-\d{2}[^/]*\.md$/.test(f)).sort()) {
+    const d = /(\d{4}-\d{2}-\d{2})/.exec(base(f))[1];
+    (calDays[d] = calDays[d] || []).push({ path: f, name: base(f).replace(/\.md$/, ''), daily: base(f) === d + '.md' });
+  }
+  for (const list of Object.values(calDays)) list.sort((a, b) => (b.daily - a.daily) || (a.name < b.name ? -1 : 1)); // the daily note first
   out.layers = {
-    atlas: { count: atlasFiles.length, waiting: out.proposals.tray.filter(p => /^Atlas\//.test(p.to)) },
-    calendar: { count: calFiles.length, recent: calFiles.slice(0, 8).map(f => ({ path: f, date: base(f).replace('.md', '') })) },
+    atlas: { count: atlasFiles.length, notes: atlasFiles.sort().map(f => { const rel = f.slice(join(R, 'Atlas').length + 1); return { name: base(f).replace(/\.md$/, ''), path: f, folder: rel.split('/').slice(0, -1).join('/') }; }), waiting: out.proposals.tray.filter(p => /^Atlas\//.test(p.to)) },
+    calendar: { count: calFiles.length, days: calDays, recent: calFiles.slice(0, 8).map(f => ({ path: f, date: base(f).replace('.md', '') })) },
     efforts: { count: efforts.length },
     aios: { toDecide: out.proposals.tray.length, files: out.proposals.files }
   };

@@ -11,6 +11,11 @@
   const api = {
     open: p => window.__log.opened.push(p),
     completeLever: async r => { (window.__log.levers = window.__log.levers || []).push(r); return true; },
+    setStatus: async (p, w) => { (window.__log.statuses = window.__log.statuses || []).push([p, w]); return true; },
+    skipLever: async k => { (window.__log.skips = window.__log.skips || []).push(k); },
+    clearSkips: async f => { (window.__log.unskips = window.__log.unskips || []).push(f); },
+    setOrder: async n => { (window.__log.orders = window.__log.orders || []).push(n); },
+    createDailyNote: async d => { (window.__log.daily = window.__log.daily || []).push(d); return 'Calendar/' + d + '.md'; },
     snooze: async (k, h) => { (window.__log.snoozed = window.__log.snoozed || []).push([k, h]); },
     unsnooze: async k => { (window.__log.unsnoozed = window.__log.unsnoozed || []).push(k); },
     claudeRun: async (k, p) => { (window.__log.claude = window.__log.claude || []).push([k, p]); await new Promise(r => setTimeout(r, 300)); return k === 'log' ? { ok: true, mode: 'background', draft: true, text: '**2026-10-23 (test)** — Draft\n- Built: x\n---' } : { ok: true, mode: 'background', text: 'A stand-in answer for ' + k }; },

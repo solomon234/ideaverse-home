@@ -164,19 +164,14 @@ function parseTodoGroups(secs) {
 }
 
 // The smallest next move: first unchecked item under a "next"-style heading, else the first unchecked anywhere.
-function pickLeverItem(secs) {
-  const next = /immediate|next action|^next|to-?do|steps/i;
-  for (const s of secs) {
-    if (!next.test(s.title)) continue;
-    const it = listItems(s.lines).find(x => x.checked === false || (x.checked === null && /next action/i.test(s.title)));
-    if (it) return it;
-  }
-  for (const s of secs) {
-    const it = listItems(s.lines).find(x => x.checked === false);
-    if (it) return it;
-  }
-  return null;
+// Items that could be the lever, best first: unchecked items under a "next"-style heading, then unchecked items anywhere.
+function leverCandidates(secs) {
+  const next = /immediate|next action|^next|to-?do|steps/i, out = [], items = secs.map(s => listItems(s.lines));
+  secs.forEach((s, k) => { if (next.test(s.title)) items[k].forEach(it => { if (it.checked === false || (it.checked === null && /next action/i.test(s.title))) { it.used = true; out.push(it); } }); });
+  items.forEach(list => list.forEach(it => { if (it.checked === false && !it.used) out.push(it); }));
+  return out;
 }
+function pickLeverItem(secs) { return leverCandidates(secs)[0] || null; }
 function pickLever(secs) {
   const it = pickLeverItem(secs);
   return it ? trunc(it.t, 150) : '';
@@ -327,6 +322,28 @@ function setFrontmatterStatus(text, value) {
   return text.slice(0, 4) + next + text.slice(4 + block.length);
 }
 
+// Sets an effort's status word, keeping what follows an em dash ("active — savings phase" becomes "paused — savings phase").
+// Looks where parseStatus looks: a **Status:** line, a Status section, frontmatter; if there is none, adds a line under the title.
+function setEffortStatus(text, word) {
+  const head = val => { const i = val.search(/\s+—\s+/); return i < 0 ? word : word + val.slice(i); };
+  if (/^\*\*Status:\*\*/im.test(text)) return text.replace(/^(\*\*Status:\*\*[ \t]*)([^\n\r]*)/im, (m, pre, val) => pre + head(val));
+  const lines = text.split('\n'), at = lines.findIndex(l => /^#{1,6}\s+Status\s*$/i.test(l));
+  if (at >= 0) {
+    const k = lines.findIndex((l, i) => i > at && l.trim() !== '');
+    if (k >= 0 && !/^#{1,6}\s/.test(lines[k])) { lines[k] = head(lines[k]); return lines.join('\n'); }
+  }
+  if (splitFrontmatter(text).fm.status) return setFrontmatterStatus(text, word);
+  const h1 = lines.findIndex(l => /^#\s/.test(l));
+  if (h1 < 0) return `**Status:** ${word}\n\n` + text;
+  lines.splice(h1 + 1, 0, '', `**Status:** ${word}`);
+  return lines.join('\n');
+}
+
+// A new daily note from the vault's template (YYYY-MM-DD is replaced by the date), or a small default.
+function dailyNoteFrom(template, date) {
+  return template && template.trim() ? template.replace(/YYYY-MM-DD/g, date) : `---\ndate: ${date}\ntype: daily-note\n---\n\n# ${date}\n`;
+}
+
 function addDays(iso, n) {
   const [y, m, d] = iso.split('-').map(Number);
   return new Date(Date.UTC(y, m - 1, d + n)).toISOString().slice(0, 10);
@@ -356,6 +373,6 @@ function weekBuckets(dates, todayIso, n) {
 
 module.exports = {
   clean, trunc, splitFrontmatter, sections, listItems, parseStatus, isKanban, parseKanban, parseTables, money,
-  parsePrices, parseSteps, parseTodoGroups, pickLever, pickLeverItem, checkOffItem, completeBoardCard, kanbanLanes, addBoardCard, addTodoItem, appendCapture, formatMeetingEntry, newEffortReadme, parseProposal, parseLog, formatDateLabel, formatIso,
+  parsePrices, parseSteps, parseTodoGroups, pickLever, pickLeverItem, leverCandidates, setEffortStatus, dailyNoteFrom, checkOffItem, completeBoardCard, kanbanLanes, addBoardCard, addTodoItem, appendCapture, formatMeetingEntry, newEffortReadme, parseProposal, parseLog, formatDateLabel, formatIso,
   setFrontmatterStatus, addDays, daysBetween, weekBuckets
 };

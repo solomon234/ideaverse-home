@@ -174,3 +174,23 @@ test('addDays crosses month and year ends', () => {
   assert.strictEqual(P.addDays('2026-10-30', 7), '2026-11-06');
   assert.strictEqual(P.addDays('2026-12-31', 1), '2027-01-01');
 });
+
+test('setEffortStatus changes the word and keeps the note after the dash', () => {
+  assert.strictEqual(P.setEffortStatus('# X\n\n**Status:** active — savings phase\n**Started:** 1', 'paused'), '# X\n\n**Status:** paused — savings phase\n**Started:** 1');
+  assert.strictEqual(P.setEffortStatus('# X\n\n## Status\n\nActive, going\n\n## B', 'waiting'), '# X\n\n## Status\n\nwaiting\n\n## B');
+  assert.strictEqual(P.setEffortStatus('---\nstatus: active\n---\n# X', 'paused'), '---\nstatus: paused\n---\n# X');
+  assert.strictEqual(P.setEffortStatus('# X\n\ntext', 'paused'), '# X\n\n**Status:** paused\n\ntext');
+  for (const [word, tone] of [['active', 'active'], ['waiting', 'wait'], ['paused', 'idle'], ['not started', 'idle']]) {
+    const t = P.setEffortStatus('# X\n\n**Status:** active — fine\n', word), { fm, body } = P.splitFrontmatter(t);
+    assert.strictEqual(P.parseStatus(fm, body, P.sections(body)).tone, tone, word);
+  }
+});
+
+test('leverCandidates lists next-style items first, each once', () => {
+  assert.deepStrictEqual(P.leverCandidates(P.sections('# x\n## Later\n- [ ] z\n## Todo\n- [ ] a\n- [x] b\n- [ ] c')).map(i => i.t), ['a', 'c', 'z']);
+});
+
+test('dailyNoteFrom fills the date into the template, or makes a small note', () => {
+  assert.strictEqual(P.dailyNoteFrom('---\ndate: YYYY-MM-DD\n---\n# YYYY-MM-DD\n', '2026-10-24'), '---\ndate: 2026-10-24\n---\n# 2026-10-24\n');
+  assert.ok(P.dailyNoteFrom('  ', '2026-10-24').includes('# 2026-10-24'));
+});

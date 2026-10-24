@@ -231,3 +231,31 @@
 .ideaverse-root .iv-needs .iv-sn-head:hover,.ideaverse-root .iv-needs .iv-sn-row:hover,.ideaverse-root .iv-needs .iv-empty:hover{background:none}
 .ideaverse-root .iv-needs .iv-sn-row{cursor:default;opacity:.8}
 .ideaverse-root .iv-needs .iv-empty{cursor:default}
+
+/* status menu, lever buttons, order */
+.ideaverse-root .iv-stwrap{position:relative;display:inline-block}
+.ideaverse-root button.iv-st{font:inherit;font-size:13px;font-weight:600;border:0;cursor:pointer}
+.ideaverse-root button.iv-st::after{content:'▾';margin-left:6px;opacity:.6;font-size:11px}
+.ideaverse-root button.iv-st:hover{filter:brightness(1.2)}
+.ideaverse-root .iv-stmenu{position:absolute;left:0;top:34px;z-index:15;display:grid;gap:4px;padding:6px;border-radius:14px;background:rgba(18,22,38,.96);backdrop-filter:blur(30px);border:1px solid var(--iv-edge);box-shadow:0 20px 60px rgba(0,0,0,.55);min-width:150px}
+.ideaverse-root .iv-stmenu .iv-btn{text-align:left;min-height:36px}
+.ideaverse-root .iv-lbtns{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:12px}
+.ideaverse-root .iv-lbtns .iv-btn{margin-top:0}
+.ideaverse-root .iv-lbtns .iv-snb{margin:0}
+.ideaverse-root .iv-btn:disabled{opacity:.4;cursor:default}
+
+/* calendar and atlas windows */
+.ideaverse-root .iv-body-pad{padding:18px 24px 22px}
+.ideaverse-root .iv-calnav{display:flex;align-items:center;gap:8px;margin-bottom:12px}
+.ideaverse-root .iv-calnav b{flex:1;text-align:center;font-size:16px}
+.ideaverse-root .iv-cal{display:grid;grid-template-columns:repeat(7,1fr);gap:4px}
+.ideaverse-root .iv-cal small{text-align:center;font-family:var(--iv-mono);font-size:12px;color:var(--iv-muted);padding-bottom:2px}
+.ideaverse-root .iv-cd{position:relative;min-height:42px;border-radius:10px;border:1px solid transparent;background:rgba(255,255,255,.05);font:inherit;font-size:14px;cursor:pointer;color:inherit}
+.ideaverse-root .iv-cd:hover{background:rgba(255,255,255,.12)}
+.ideaverse-root .iv-cd.today{border-color:rgba(156,196,255,.8);font-weight:700}
+.ideaverse-root .iv-cd[aria-pressed=true]{background:#fff;color:#0b0e18}
+.ideaverse-root .iv-cd i{position:absolute;left:50%;bottom:5px;width:5px;height:5px;margin-left:-2.5px;border-radius:50%;background:#9cc4ff}
+.ideaverse-root .iv-cd[aria-pressed=true] i{background:#0b0e18}
+.ideaverse-root .iv-filter{width:100%;box-sizing:border-box;min-height:44px;font:inherit;font-size:16px;color:#fff;background:rgba(255,255,255,.08);border:1px solid var(--iv-edge);border-radius:10px;padding:0 12px;margin-bottom:12px;color-scheme:dark}
+.ideaverse-root .iv-gh{font-size:13px;font-family:var(--iv-mono);color:var(--iv-muted);margin:18px 0 8px;font-weight:500}
+.ideaverse-root [hidden]{display:none!important}
