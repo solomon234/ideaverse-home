@@ -11,6 +11,9 @@
   const api = {
     open: p => window.__log.opened.push(p),
     completeLever: async r => { (window.__log.levers = window.__log.levers || []).push(r); return true; },
+    claudeRun: async (k, p) => { (window.__log.claude = window.__log.claude || []).push([k, p]); await new Promise(r => setTimeout(r, 300)); return k === 'log' ? { ok: true, mode: 'background', draft: true, text: '**2026-10-23 (test)** — Draft\n- Built: x\n---' } : { ok: true, mode: 'background', text: 'A stand-in answer for ' + k }; },
+    claudeCancel: () => {},
+    appendLog: async t => { (window.__log.appended = window.__log.appended || []).push(t); return true; },
     addTodo: async (t, x) => { (window.__log.todos = window.__log.todos || []).push([t, x]); return true; },
     capture: async x => { (window.__log.captures = window.__log.captures || []).push(x); return true; },
     createEffort: async n => { (window.__log.created = window.__log.created || []).push(n); return ''; },

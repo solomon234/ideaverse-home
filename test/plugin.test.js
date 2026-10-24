@@ -113,3 +113,55 @@ test('new effort, meeting log and lever completion write what they say they writ
   assert.strictEqual(await plugin.completeLever({ kind: 'todo', path: 'V/Efforts/A/README.md', text: 'Gone' }), false);
   assert.ok(files['V/Efforts/A/README.md'].includes('- [x] One\n- [ ] Two\n'), 'a missed target leaves the note alone');
 });
+
+test('background Claude runs pass read-only arguments, return the answer, and can be switched off', { skip: !fs.existsSync(DIST) && 'run npm run build first' }, async () => {
+  const os = require('os');
+  const { Cls, TFile, TFolder, stub } = loadPlugin();
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'iv-claude-'));
+  const fake = path.join(dir, 'claude');
+  fs.writeFileSync(fake, '#!/bin/sh\nif [ "$FAKE_FAIL" = 1 ]; then echo "not logged in" >&2; exit 1; fi\necho "ARGS: $*"\necho "CWD: $(pwd)"\n');
+  fs.chmodSync(fake, 0o755);
+  const files = { 'V/Efforts/A/README.md': '# A\n' }, folders = new Set(['V', 'V/Efforts', 'V/Efforts/A']);
+  const app = {
+    vault: { on: () => ({}), getAbstractFileByPath: p => (files[p] !== undefined ? new TFile(p) : folders.has(p) ? new TFolder(p) : null), process: async () => {}, adapter: { getBasePath: () => dir } },
+    workspace: { onLayoutReady: fn => fn(), getLeavesOfType: () => [] }
+  };
+  fs.mkdirSync(path.join(dir, 'V/Efforts/A'), { recursive: true });
+  const plugin = new Cls(app);
+  await plugin.onload();
+  Object.assign(plugin.settings, { rootFolder: 'V', claudeMode: 'background', claudePath: fake });
+
+  const r = await plugin.claudeRun('ask', { folder: 'V/Efforts/A', name: 'A', question: 'what next?' });
+  assert.strictEqual(r.ok, true, JSON.stringify(r));
+  assert.ok(r.text.includes('--tools Read,Grep,Glob'), r.text);
+  assert.ok(r.text.includes('what next?'));
+  assert.ok(r.text.includes('CWD: ' + fs.realpathSync(path.join(dir, 'V/Efforts/A'))), r.text);
+
+  process.env.FAKE_FAIL = '1';
+  const bad = await plugin.claudeRun('triage', { paths: ['V/AIOS/Proposals/a.md'] });
+  delete process.env.FAKE_FAIL;
+  assert.deepStrictEqual([bad.ok, bad.error], [false, 'not logged in']);
+
+  assert.strictEqual((await plugin.claudeRun('triage', { paths: [] })).ok, false, 'nothing to triage');
+  assert.strictEqual((await plugin.claudeRun('ask', { folder: 'V/Efforts/A', name: 'A', question: ' ' })).ok, false);
+  plugin.settings.claudePath = path.join(dir, 'missing');
+  assert.match((await plugin.claudeRun('ask', { folder: 'V/Efforts/A', name: 'A', question: 'x' })).error, /Could not find the claude command/);
+  plugin.settings.claudeMode = 'off';
+  assert.match((await plugin.claudeRun('ask', {})).error, /switched off/);
+});
+
+test('a drafted log entry is checked before it is added', { skip: !fs.existsSync(DIST) && 'run npm run build first' }, async () => {
+  const { Cls, TFile, TFolder } = loadPlugin();
+  const files = {}, folders = new Set(['V']);
+  const app = {
+    vault: { on: () => ({}), getAbstractFileByPath: p => (files[p] !== undefined ? new TFile(p) : folders.has(p) ? new TFolder(p) : null), process: async (f, fn) => { files[f.path] = fn(files[f.path]); }, createFolder: async p => { folders.add(p); }, create: async (p, t) => { files[p] = t; }, adapter: {} },
+    workspace: { onLayoutReady: fn => fn(), getLeavesOfType: () => [] }
+  };
+  const plugin = new Cls(app);
+  await plugin.onload();
+  Object.assign(plugin.settings, { rootFolder: 'V', logLayout: 'day' });
+  assert.strictEqual(await plugin.appendLog('no entry here'), false);
+  assert.strictEqual(await plugin.appendLog('Sure!\n**2026-10-23 (x)** — T\n- Built: a'), true);
+  assert.strictEqual(files['V/AIOS/Logs/2026-10/log-2026-10-23.md'], '**2026-10-23 (x)** — T\n- Built: a\n---\n');
+  assert.strictEqual(Object.keys(files).length, 1);
+});

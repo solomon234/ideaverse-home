@@ -2,6 +2,9 @@
 // The dashboard view. Plain DOM, no framework. mount(root, api) returns { update(data), destroy() }.
 //   api.open(path)                       open a note
 //   api.setProposalStatus(path, status)  rewrite a proposal's status line; resolves to the previous status
+//   api.claudeRun(kind, payload)         kind 'ask' | 'triage' | 'log'; resolves to { ok, text, error, mode, draft, cancelled }
+//   api.claudeCancel()                   stop a background run
+//   api.appendLog(text)                  add a drafted log entry to the day's log; resolves to true if it did
 //   api.completeLever(ref)               tick off the lever's source item; resolves to true if it did
 //   api.addTodo(target, text)            add a todo to effort.todoTarget; resolves to true if it did
 //   api.capture(text)                    append to today's scratch note; resolves to true if it did
@@ -73,7 +76,7 @@ const art = {
 
 function mount(root, api) {
   const doc = root.ownerDocument;
-  let data = null, cur = 0, win = null, trayRows = [], pal = { open: false, sel: 0, items: [] }, needsOpen = false;
+  let data = null, claude = { title: '', status: 'idle', text: '', draft: false, id: 0 }, cur = 0, win = null, trayRows = [], pal = { open: false, sel: 0, items: [] }, needsOpen = false;
 
   root.classList.add('ideaverse-root');
   root.setAttribute('tabindex', '-1');
@@ -121,6 +124,7 @@ function mount(root, api) {
           <h1 ${e.name.length > 16 ? 'style="font-size:clamp(30px,4vw,60px)"' : ''}>${esc(e.name)}</h1>
           ${e.lever ? `<div class="iv-lever iv-glass"><small>The lever</small><p>${esc(e.lever)}</p>${e.leverRef ? `<button class="iv-btn" data-lever="${i}">Mark done</button>` : ''}</div>` : ''}
           <form class="iv-add" data-form="todo" data-i="${i}"><input name="text" aria-label="Add a todo to ${esc(e.name)}" placeholder="Add a todo…" autocomplete="off" maxlength="200"><button class="iv-btn" type="submit">Add</button><small>Goes to ${esc(e.todoTarget.label)}.</small></form>
+          ${data.claudeMode && data.claudeMode !== 'off' ? `<form class="iv-add" data-form="ask" data-i="${i}"><input name="q" aria-label="Ask Claude about ${esc(e.name)}" placeholder="Ask Claude about this effort…" autocomplete="off" maxlength="300"><button class="iv-btn" type="submit">Ask</button></form>` : ''}
           <div class="iv-spark"><svg width="154" height="34" viewBox="0 0 154 34" role="img" aria-label="Changes per week, last ${e.weeks.length} weeks: ${e.weeks.join(', ')}">${bars}</svg><small>Weeks with changes, last ${e.weeks.length}. From git history of this folder.</small></div>
           <details><summary>About this effort</summary>${e.summary ? `<p>${esc(e.summary)}</p>` : ''}${e.facts.length ? `<ul class="iv-facts">${e.facts.map(f => `<li>${esc(f)}</li>`).join('')}</ul>` : ''}
             <div class="iv-links"><button class="iv-btn" data-open="${esc(e.path)}">Open README</button>${e.boardPath ? `<button class="iv-btn" data-open="${esc(e.boardPath)}">Open board</button>` : ''}<button class="iv-btn" data-archive="${esc(e.folder)}">Archive effort</button></div></details></div>
@@ -154,13 +158,28 @@ function mount(root, api) {
   const views = {
     atlas: () => { const L = data.layers.atlas; return ['Atlas', `<div class="iv-void"><b>${L.count}</b>${L.count === 1 ? 'note' : 'notes'} filed in Atlas.</div>${L.waiting.length ? `<ul class="iv-rows">${L.waiting.map(p => `<li class="iv-prop"><span class="t"><span class="iv-tag ${esc(p.status)}">${esc(p.status)}</span>${esc(p.topic)}</span><span class="to">→ ${esc(p.to)}</span><span class="act"><button class="iv-btn" data-open="${esc(p.path)}">Open</button></span></li>`).join('')}</ul><p class="iv-note">Proposals waiting to become notes in Atlas.</p>` : ''}`]; },
     calendar: () => { const L = data.layers.calendar; return ['Calendar', L.recent.length ? `<ul class="iv-rows">${L.recent.map(c => `<li><button class="iv-link" data-open="${esc(c.path)}"><time>${esc(c.date)}</time></button></li>`).join('')}</ul><p class="iv-note">${L.count} daily note${L.count === 1 ? '' : 's'} in the vault.</p>` : '<div class="iv-void"><b>0</b>daily notes yet.</div>']; },
-    aios: () => ['AIOS · proposals tray', trayRows.length ? `<ul class="iv-rows">${trayRows.map((r, i) => r.marked ? rowMarked(r, i) : rowPending(r, i)).join('')}</ul><p class="iv-note">${data.proposals.counts.pending} pending and ${data.proposals.counts.draft} draft of ${data.proposals.files} files in Proposals. Marking a proposal edits only its status line; moving its content into the vault is still yours to do.</p>` : '<div class="iv-void"><b>0</b>proposals need a decision.</div>'],
+    aios: () => ['AIOS · proposals tray', trayRows.length ? `<ul class="iv-rows">${trayRows.map((r, i) => r.marked ? rowMarked(r, i) : rowPending(r, i)).join('')}</ul>${data.claudeMode && data.claudeMode !== 'off' ? '<div class="act"><button class="iv-btn" data-claude-triage>Ask Claude to triage these</button></div>' : ''}<p class="iv-note">${data.proposals.counts.pending} pending and ${data.proposals.counts.draft} draft of ${data.proposals.files} files in Proposals. Marking a proposal edits only its status line; moving its content into the vault is still yours to do.</p>` : '<div class="iv-void"><b>0</b>proposals need a decision.</div>'],
     newEffort: () => ['New effort', `<form class="iv-form" data-form="effort"><label>Name<input name="name" autocomplete="off" required maxlength="80"></label><p class="iv-note">Creates Efforts/&lt;name&gt;/README.md with a status line, an overview and a Todo List with one Immediate item.</p><p class="iv-err" role="alert" hidden></p><div class="act"><button class="iv-btn p" type="submit">Create effort</button></div></form>`],
     meeting: () => ['Log a meeting', `<form class="iv-form" data-form="meeting"><label>Title<input name="title" autocomplete="off" required maxlength="120"></label><label>Date<input name="date" type="date" value="${esc(data.today)}" required></label><label>With<input name="with" autocomplete="off" placeholder="Names, separated by commas"></label><label>Outcome<textarea name="outcome" rows="3" placeholder="What was decided or learned"></textarea></label><label>Open items<input name="open" autocomplete="off" placeholder="Separate with semicolons; they show up under Needs you"></label><p class="iv-note">Adds an entry to the end of that month's log in AIOS/Logs. Earlier entries are not touched.</p><p class="iv-err" role="alert" hidden></p><div class="act"><button class="iv-btn p" type="submit">Add to log</button></div></form>`],
     capture: () => ['Capture to scratch', `<form class="iv-form" data-form="capture"><label>Note<textarea name="text" rows="4" required placeholder="A thought, a link, something to sort out later"></textarea></label><p class="iv-note">Adds a timestamped line to today's note in AIOS/Scratch (created if needed).</p><p class="iv-err" role="alert" hidden></p><div class="act"><button class="iv-btn p" type="submit">Capture</button></div></form>`],
+    claude: () => [claude.title, claude.status === 'running'
+      ? `<div class="iv-void"><b>…</b>Claude is reading your notes. This can take up to a minute.</div><div class="act"><button class="iv-btn" data-claude-cancel>Cancel</button></div>`
+      : claude.status === 'error' ? `<div class="iv-void">${esc(claude.text)}</div>`
+      : `<pre class="iv-answer">${esc(claude.text)}</pre>${claude.draft ? `<div class="act"><button class="iv-btn p" data-claude-log>Add to today's log</button></div><p class="iv-note">Nothing is written until you press the button. Edit the entry afterwards in the log note if needed.</p>` : ''}${claude.mode === 'background' ? '<p class="iv-note">Read-only run: Claude could read notes but not change them.</p>' : ''}`],
     archived: () => ['Archived efforts', (data.archived || []).length ? `<ul class="iv-rows">${data.archived.map(a => `<li class="iv-prop"><span class="t">${esc(a.name)}</span><span class="to">${esc(a.folder)} · last changed ${esc(fmtIso(a.last))}</span><span class="act"><button class="iv-btn" data-open="${esc(a.path)}">Open</button><button class="iv-btn p" data-restore="${esc(a.folder)}">Restore</button></span></li>`).join('')}</ul><p class="iv-note">Restore moves the folder back to Efforts.</p>` : '<div class="iv-void"><b>0</b>archived efforts.</div>'],
-    recent: () => ['Recently', `<ul class="iv-rows">${data.sessions.map(s => `<li><button class="iv-link" data-open="${esc(s.path)}"><time>${esc(s.date)}</time><b>${esc(s.title)}</b></button></li>`).join('')}</ul>`]
+    recent: () => ['Recently', `${data.claudeMode && data.claudeMode !== 'off' ? '<div class="act" style="margin-bottom:10px"><button class="iv-btn" data-claude-log-draft>Draft today\'s log entry</button></div>' : ''}<ul class="iv-rows">${data.sessions.map(s => `<li><button class="iv-link" data-open="${esc(s.path)}"><time>${esc(s.date)}</time><b>${esc(s.title)}</b></button></li>`).join('')}</ul>`]
   };
+  function startClaude(kind, payload, title) {
+    const id = ++claude.id;
+    claude = { id, title, status: 'running', text: '', draft: false, mode: '' };
+    showView('claude');
+    api.claudeRun(kind, payload).then(r => {
+      if (claude.id !== id) return;
+      claude = { id, title, status: r.ok ? 'done' : 'error', text: r.ok ? r.text : (r.error || 'Failed.'), draft: !!(r.ok && r.draft), mode: r.mode };
+      if (r.cancelled) { if (win === 'claude') showView('efforts'); return; }
+      if (win === 'claude') showView('claude');
+    });
+  }
   function showView(key, from) {
     $$('.iv-d').forEach(b => b.setAttribute('aria-pressed', b.dataset.view === key));
     if (key === 'efforts') { win = null; layer.hidden = true; if (from !== 'silent') root.focus(); return; }
@@ -178,6 +197,7 @@ function mount(root, api) {
       { t: 'Proposals tray', k: 'AIOS', run: () => showView('aios') }, { t: 'Recently', k: 'view', run: () => showView('recent') },
       { t: `Archived efforts (${(data.archived || []).length})`, k: 'view', run: () => showView('archived') },
       { t: 'New effort…', k: 'create', run: () => showView('newEffort') }, { t: 'Log a meeting…', k: 'log', run: () => showView('meeting') }, { t: 'Capture to scratch…', k: 'log', run: () => showView('capture') },
+      ...(data.claudeMode && data.claudeMode !== 'off' ? [{ t: 'Claude: triage proposals', k: 'claude', run: () => startClaude('triage', { paths: data.proposals.tray.map(p => p.path) }, 'Proposal triage') }, { t: "Claude: draft today's log entry", k: 'claude', run: () => startClaude('log', {}, "Draft log entry") }] : []),
       { t: 'Needs you', k: 'list', run: () => { showView('efforts'); setNeeds(true); } }];
     return all.filter(c => c.t.toLowerCase().includes(q));
   }
@@ -206,6 +226,10 @@ function mount(root, api) {
     if (t === layer || t.closest('.iv-x')) return showView('efforts');
     if (t === palEl) return closePal();
     const pi = t.closest('.iv-plist [data-i]'); if (pi && pal.items[+pi.dataset.i]) { const it = pal.items[+pi.dataset.i]; closePal(); it.run(); return; }
+    if (t.closest('[data-claude-cancel]')) { api.claudeCancel(); return; }
+    if (t.closest('[data-claude-triage]')) return startClaude('triage', { paths: data.proposals.tray.map(p => p.path) }, 'Proposal triage');
+    if (t.closest('[data-claude-log-draft]')) return startClaude('log', {}, 'Draft log entry');
+    if (t.closest('[data-claude-log]')) { api.appendLog(claude.text).then(ok => { if (ok) showView('recent'); }); return; }
     const lv = t.closest('[data-lever]');
     if (lv) { const e = data.efforts[+lv.dataset.lever]; if (e && e.leverRef) { lv.disabled = true; api.completeLever(e.leverRef).then(ok => { if (!ok && lv.isConnected) lv.disabled = false; }); } return; }
     if (t.closest('[data-new-effort]')) return showView('newEffort');
@@ -226,6 +250,10 @@ function mount(root, api) {
     const form = ev.target.closest('[data-form]'); if (!form) return;
     ev.preventDefault();
     const v = {}; for (const el of form.elements) if (el.name) v[el.name] = el.value;
+    if (form.dataset.form === 'ask') {
+      const e = data.efforts[+form.dataset.i]; if (!e || !v.q.trim()) return;
+      return startClaude('ask', { folder: e.folder, name: e.name, question: v.q }, 'Ask about ' + e.name);
+    }
     if (form.dataset.form === 'todo') {
       const e = data.efforts[+form.dataset.i]; if (!e || !v.text.trim()) return;
       form.querySelector('[type=submit]').disabled = true;

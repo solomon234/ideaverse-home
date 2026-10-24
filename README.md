@@ -40,7 +40,16 @@ It is opinionated: it assumes a vault laid out like this, and shows a "No effort
   - *+ Meeting*: appends one entry to the end of that month's `AIOS/Logs/log-YYYY-MM.md`, or, with the *Session log files* setting on "per day", to `AIOS/Logs/YYYY-MM/log-YYYY-MM-DD.md` (creating the file if needed) in the form `**date (meeting)** — Title`, with optional `With`, `Outcome` and `Open` lines.
 
   It never deletes notes and never rewrites earlier text.
-- **Runs** `git log` (through Node's `child_process`) on each effort folder to build the activity strip. If git is not installed, or the vault is not a git repository, the strip is empty and everything else works. This is why the plugin is desktop-only.
+- **Runs** `claude` (only if you turn the Claude Code setting on) and `git log` (through Node's `child_process`) on each effort folder to build the activity strip. If git is not installed, or the vault is not a git repository, the strip is empty and everything else works. This is why the plugin is desktop-only.
+
+## Claude Code (optional, off by default)
+
+With the `claude` command installed, three things appear: an **Ask Claude** box on each effort, **Ask Claude to triage these** in the proposals tray, and **Draft today's log entry** under Recently (also in `Cmd/Ctrl+K`). Pick how it runs in settings:
+
+- **Open in Terminal** (macOS): starts an ordinary interactive `claude` session in the right folder with the prompt filled in. Claude asks before it changes anything, as usual.
+- **Run in the background**: runs `claude -p` with only the `Read`, `Grep` and `Glob` tools, so it can read your notes but cannot change them or run commands, and shows the answer in a panel with a Cancel button. A drafted log entry is added only when you press *Add to today's log*, and only if it has the log's shape.
+
+It uses whatever login Claude Code has (your subscription), unless `ANTHROPIC_API_KEY` is set where Obsidian starts, in which case `claude -p` uses that key. Nothing is sent anywhere by the plugin itself; the notes Claude reads go to Anthropic as with any Claude Code session.
 
 ## Install
 

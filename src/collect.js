@@ -7,6 +7,8 @@ const P = require('./parse');
 const DEFAULT_SETTINGS = {
   rootFolder: '', // folder that holds Efforts, AIOS, Atlas and Calendar; empty means the vault root
   openOnStartup: false,
+  claudeMode: 'off', // 'off', 'terminal' (open Terminal with a prompt) or 'background' (run claude -p, read-only, and show the answer)
+  claudePath: '', // empty: look in the usual install folders
   logLayout: 'month', // where + Meeting writes: 'month' (AIOS/Logs/log-YYYY-MM.md) or 'day' (AIOS/Logs/YYYY-MM/log-YYYY-MM-DD.md); both layouts are always read
   staleDays: 60,
   weeks: 14,

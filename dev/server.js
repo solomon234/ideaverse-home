@@ -53,6 +53,7 @@ http.createServer(async (req, res) => {
       const settings = readSettings();
       const d = await collect(nodeIO(VAULT), settings, local());
       d.staleDays = settings.staleDays;
+      d.claudeMode = process.env.CLAUDE_MODE || 'off';
       res.setHeader('content-type', 'application/json'); return res.end(JSON.stringify(d));
     }
     res.statusCode = 404; res.end('not found');

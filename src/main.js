@@ -4,6 +4,7 @@ const { Plugin, ItemView, PluginSettingTab, Setting, Notice, TFile, TFolder } = 
 const { collect, DEFAULT_SETTINGS, ARCHIVE } = require('./collect');
 const { mount } = require('./ui');
 const P = require('./parse');
+const K = require('./claude');
 
 const VIEW = 'ideaverse-home';
 
@@ -40,6 +41,9 @@ class HomeView extends ItemView {
     this.ui = mount(this.contentEl, {
       open: path => plugin.openPath(path),
       setProposalStatus: (path, status) => plugin.setProposalStatus(path, status),
+      claudeRun: (kind, payload) => plugin.claudeRun(kind, payload),
+      claudeCancel: () => plugin.claudeCancel(),
+      appendLog: text => plugin.appendLog(text),
       completeLever: ref => plugin.completeLever(ref),
       addTodo: (target, text) => plugin.addTodo(target, text),
       capture: text => plugin.capture(text),
@@ -93,6 +97,7 @@ module.exports = class IdeaverseHome extends Plugin {
     try {
       const data = await collect(obsidianIO(this.app), this.settings, localIso());
       data.staleDays = this.settings.staleDays;
+      data.claudeMode = this.settings.claudeMode;
       for (const v of open) v.ui.update(data);
     } catch (e) {
       console.error('[ideaverse-home] could not read the vault', e);
@@ -214,20 +219,26 @@ module.exports = class IdeaverseHome extends Plugin {
     }
   }
 
-  // Appends a meeting to that month's session log (AIOS/Logs/log-YYYY-MM.md), creating the file if needed. Never rewrites earlier text.
+  // Appends an entry to the end of that date's session log (a day file or the month's file, by setting), creating it if needed.
+  // Never rewrites earlier text. Resolves to the file name written.
+  async appendLogEntry(date, entry) {
+    const month = date.slice(0, 7);
+    const path = this.underRoot(this.settings.logLayout === 'day' ? `AIOS/Logs/${month}/log-${date}.md` : `AIOS/Logs/log-${month}.md`);
+    const f = this.app.vault.getAbstractFileByPath(path);
+    if (f instanceof TFile) await this.app.vault.process(f, text => text.replace(/\s*$/, '') + '\n\n' + entry);
+    else {
+      await this.ensureFolder(path.split('/').slice(0, -1).join('/'));
+      await this.app.vault.create(path, entry);
+    }
+    return path.split('/').pop();
+  }
+
   async logMeeting(m) {
     try {
       if (!String(m.title || '').trim()) throw new Error('Give the meeting a title.');
       if (!/^\d{4}-\d{2}-\d{2}$/.test(m.date || '')) throw new Error('Pick a date.');
-      const month = m.date.slice(0, 7);
-      const path = this.underRoot(this.settings.logLayout === 'day' ? `AIOS/Logs/${month}/log-${m.date}.md` : `AIOS/Logs/log-${month}.md`), entry = P.formatMeetingEntry(m);
-      const f = this.app.vault.getAbstractFileByPath(path);
-      if (f instanceof TFile) await this.app.vault.process(f, text => text.replace(/\s*$/, '') + '\n\n' + entry);
-      else {
-        await this.ensureFolder(path.split('/').slice(0, -1).join('/'));
-        await this.app.vault.create(path, entry);
-      }
-      new Notice(`Logged "${m.title.trim()}" in ${path.split('/').pop()}`);
+      const file = await this.appendLogEntry(m.date, P.formatMeetingEntry(m));
+      new Notice(`Logged "${m.title.trim()}" in ${file}`);
       await this.refresh();
       return true;
     } catch (e) {
@@ -235,6 +246,115 @@ module.exports = class IdeaverseHome extends Plugin {
       return false;
     }
   }
+
+  // Adds a drafted entry (from "Draft today's log entry") after checking it has the log's shape.
+  async appendLog(text) {
+    try {
+      const entry = K.cleanLogEntry(text), date = K.entryDate(entry || '');
+      if (!entry || !date) throw new Error('The draft is not in the log format.');
+      const file = await this.appendLogEntry(date, entry);
+      new Notice(`Added to ${file}`);
+      await this.refresh();
+      return true;
+    } catch (e) {
+      new Notice(`Ideaverse home: could not add the entry. ${e.message}`);
+      return false;
+    }
+  }
+
+  // ---- Claude Code (optional). Background runs are read-only; Terminal runs are an ordinary interactive session. ----
+  baseAbs() { const a = this.app.vault.adapter; return typeof a.getBasePath === 'function' ? a.getBasePath() : null; }
+
+  // The root folder on disk (where Efforts, AIOS and the vault's CLAUDE.md live); Claude runs from here or from an effort folder.
+  rootAbs() {
+    const base = this.baseAbs(), root = (this.settings.rootFolder || '').replace(/\/+$/, '');
+    return base ? (root ? `${base}/${root}` : base) : null;
+  }
+
+  claudeBinary() {
+    const fs = require('fs'), home = require('os').homedir();
+    if (this.settings.claudePath) return fs.existsSync(this.settings.claudePath) ? this.settings.claudePath : null;
+    return ['/opt/homebrew/bin/claude', '/usr/local/bin/claude', `${home}/.local/bin/claude`, `${home}/.claude/local/claude`].find(p => fs.existsSync(p)) || null;
+  }
+
+  // Today's commits and uncommitted files, as plain text for the log draft. Empty if git is not available.
+  gitText(args) {
+    return new Promise(res => {
+      const root = this.rootAbs();
+      if (!root) return res('');
+      try { require('child_process').execFile('git', ['-C', root, ...args], { maxBuffer: 4e6 }, (err, out) => res(err ? '' : out.trim().slice(0, 5000))); } catch (e) { res(''); }
+    });
+  }
+
+  async claudeTask(kind, p) {
+    const root = this.rootAbs();
+    if (!root) throw new Error('This vault is not on disk, so Claude cannot read it.');
+    if (kind === 'ask') {
+      if (!String(p.question || '').trim()) throw new Error('Type a question first.');
+      return { cwd: `${this.baseAbs()}/${p.folder}`, prompt: K.ask(p.name, p.question), title: `Ask about ${p.name}` };
+    }
+    if (kind === 'triage') {
+      const prefix = (this.settings.rootFolder || '').replace(/\/+$/, ''), strip = x => (prefix && x.startsWith(prefix + '/') ? x.slice(prefix.length + 1) : x);
+      if (!p.paths.length) throw new Error('No proposals are waiting.');
+      return { cwd: root, prompt: K.triage(p.paths.map(strip)), title: 'Proposal triage' };
+    }
+    if (kind === 'log') {
+      const date = localIso(), since = `${date}T00:00:00`;
+      const changes = await this.gitText(['log', `--since=${since}`, '--format=%h %s', '--name-status']);
+      const status = await this.gitText(['status', '--short', '--', '.']);
+      return { cwd: root, prompt: K.logDraft({ date, changes, status }), title: `Draft log entry for ${date}`, draft: true };
+    }
+    throw new Error('Unknown request: ' + kind);
+  }
+
+  // Resolves to { ok, text, error, mode, draft }. Never throws.
+  async claudeRun(kind, payload) {
+    const mode = this.settings.claudeMode;
+    try {
+      if (mode === 'off') throw new Error('Claude is switched off in the plugin settings.');
+      const bin = this.claudeBinary();
+      if (!bin) throw new Error('Could not find the claude command. Set its path under Settings, Ideaverse Home.');
+      const task = await this.claudeTask(kind, payload);
+      if (mode === 'terminal') return await this.openInTerminal(bin, task);
+      return await this.runHeadless(bin, task);
+    } catch (e) {
+      return { ok: false, error: e.message, mode };
+    }
+  }
+
+  openInTerminal(bin, task) {
+    return new Promise((resolve, reject) => {
+      const cmd = `cd '${task.cwd.replace(/'/g, "'\\''")}' && '${bin}' '${task.prompt.replace(/'/g, "'\\''")}'`;
+      if (process.platform !== 'darwin') {
+        navigator.clipboard.writeText(cmd).then(() => resolve({ ok: true, mode: 'terminal', text: 'Terminal launch is macOS only here. The command is on your clipboard: paste it into a terminal.' }), reject);
+        return;
+      }
+      require('child_process').execFile('osascript', ['-e', K.terminalScript(bin, task.cwd, task.prompt)], err =>
+        err ? reject(new Error('Could not open Terminal. ' + err.message)) : resolve({ ok: true, mode: 'terminal', text: 'Opened in Terminal. Claude asks before it changes anything there.' }));
+    });
+  }
+
+  runHeadless(bin, task) {
+    return new Promise(resolve => {
+      const home = require('os').homedir();
+      const env = Object.assign({}, process.env, { PATH: [process.env.PATH, '/opt/homebrew/bin', '/usr/local/bin', `${home}/.local/bin`].filter(Boolean).join(':') });
+      const child = require('child_process').spawn(bin, K.headlessArgs(task.prompt), { cwd: task.cwd, env, stdio: ['ignore', 'pipe', 'pipe'] });
+      this.claudeProc = child;
+      let out = '', err = '', done = false;
+      const finish = r => { if (done) return; done = true; clearTimeout(timer); if (this.claudeProc === child) this.claudeProc = null; resolve(Object.assign({ mode: 'background', draft: !!task.draft }, r)); };
+      const timer = setTimeout(() => { child.kill(); finish({ ok: false, error: 'Claude took longer than 4 minutes, so it was stopped.' }); }, 240000);
+      child.stdout.on('data', d => { out += d; });
+      child.stderr.on('data', d => { err += d; });
+      child.on('error', e => finish({ ok: false, error: 'Could not start claude. ' + e.message }));
+      child.on('close', (code, signal) => {
+        if (signal) return finish({ ok: false, error: 'Stopped.', cancelled: true });
+        if (code !== 0) return finish({ ok: false, error: (err.trim() || `claude exited with code ${code}`).slice(0, 600) });
+        finish({ ok: true, text: out.trim() || '(no answer)' });
+      });
+    });
+  }
+
+  claudeCancel() { if (this.claudeProc) this.claudeProc.kill(); }
 
   // Archiving moves the effort's whole folder to Efforts/Archived/<name>; restoring moves it back to Efforts/<name>.
   // fileManager.renameFile keeps links to the moved notes working. Resolves to true when the move happened.
@@ -269,6 +389,10 @@ class HomeSettings extends PluginSettingTab {
       .addToggle(t => t.setValue(s.openOnStartup).onChange(async v => { s.openOnStartup = v; await save(); }));
     new Setting(el).setName('Session log files').setDesc('Where + Meeting writes. Both layouts are always read.')
       .addDropdown(d => d.addOption('month', 'One file per month (AIOS/Logs/log-YYYY-MM.md)').addOption('day', 'One file per day (AIOS/Logs/YYYY-MM/log-YYYY-MM-DD.md)').setValue(s.logLayout).onChange(async v => { s.logLayout = v; await save(); }));
+    new Setting(el).setName('Claude Code').setDesc('Adds Ask, proposal triage and a log draft. Terminal opens an interactive session that asks before changing anything. Background runs claude -p read-only (it can read your notes, not change them) and shows the answer here; it uses your Claude Code login, or your API key if ANTHROPIC_API_KEY is set where Obsidian starts.')
+      .addDropdown(d => d.addOption('off', 'Off').addOption('terminal', 'Open in Terminal').addOption('background', 'Run in the background').setValue(s.claudeMode).onChange(async v => { s.claudeMode = v; await save(); }));
+    new Setting(el).setName('Path to claude').setDesc('Leave empty to look in /opt/homebrew/bin, /usr/local/bin and ~/.local/bin.')
+      .addText(t => t.setPlaceholder('/opt/homebrew/bin/claude').setValue(s.claudePath).onChange(async v => { s.claudePath = v.trim(); await save(); }));
     new Setting(el).setName('Dim an effort after (days)').setDesc('Efforts with no change for this long fade on their screen.')
       .addText(t => t.setValue(String(s.staleDays)).onChange(async v => { const n = parseInt(v, 10); if (n > 0) { s.staleDays = n; await save(); } }));
     new Setting(el).setName('Per-effort overrides').setDesc('JSON keyed by effort folder name. Supports "lever" (text) and "art" (a picture that cannot be read from a note, for example a map of services).')
