@@ -155,6 +155,14 @@ function mount(root, api) {
   /* ---------- windows ---------- */
   const rowPending = (r, i) => `<li class="iv-prop" data-i="${i}"><span class="t"><span class="iv-tag ${esc(r.status)}">${esc(r.status)}</span>${esc(r.topic)}</span><span class="to">→ ${esc(r.to || 'no destination set')}${r.session ? ' · ' + esc(fmtIso(r.session)) : ''}</span><span class="act"><button class="iv-btn" data-open="${esc(r.path)}">Open</button><button class="iv-btn p" data-act="promoted">Mark promoted</button><button class="iv-btn" data-act="dismissed">Dismiss</button></span></li>`;
   const rowMarked = (r, i) => `<li class="iv-prop done" data-i="${i}"><span class="t">Marked ${esc(r.marked)}: ${esc(r.topic)}</span><span class="to">Status line in the proposal now reads ${esc(r.marked)}.</span><span class="act"><button class="iv-btn" data-undo>Undo</button></span></li>`;
+  // Sessions grouped by day: a date column on the left, the day's entries on the right, joined by a thin line.
+  const dayName = iso => { const m = /(\d{4})-(\d{2})-(\d{2})/.exec(iso || ''); return m ? new Date(+m[1], +m[2] - 1, +m[3]).toLocaleDateString('en-US', { weekday: 'short' }) : ''; };
+  function timeline(list) {
+    const days = [];
+    for (const s of list) { const key = s.iso || s.date; let d = days[days.length - 1]; if (!d || d.key !== key) { d = { key, iso: s.iso, date: s.date, items: [] }; days.push(d); } d.items.push(s); }
+    return `<ol class="iv-tl">${days.map(d => `<li class="iv-day"><div class="iv-dl"><b>${esc(d.date)}</b><span>${esc(dayName(d.iso))}</span></div><ul>${d.items.map(s =>
+      `<li><button class="iv-ent" data-open="${esc(s.path)}"><span class="iv-et">${esc(s.title)}</span>${s.tag || s.open ? `<span class="iv-meta">${s.tag ? `<span>${esc(s.tag)}</span>` : ''}${s.open ? `<span class="iv-op">${s.open} open</span>` : ''}</span>` : ''}</button></li>`).join('')}</ul></li>`).join('')}</ol>`;
+  }
   const views = {
     atlas: () => { const L = data.layers.atlas; return ['Atlas', `<div class="iv-void"><b>${L.count}</b>${L.count === 1 ? 'note' : 'notes'} filed in Atlas.</div>${L.waiting.length ? `<ul class="iv-rows">${L.waiting.map(p => `<li class="iv-prop"><span class="t"><span class="iv-tag ${esc(p.status)}">${esc(p.status)}</span>${esc(p.topic)}</span><span class="to">→ ${esc(p.to)}</span><span class="act"><button class="iv-btn" data-open="${esc(p.path)}">Open</button></span></li>`).join('')}</ul><p class="iv-note">Proposals waiting to become notes in Atlas.</p>` : ''}`]; },
     calendar: () => { const L = data.layers.calendar; return ['Calendar', L.recent.length ? `<ul class="iv-rows">${L.recent.map(c => `<li><button class="iv-link" data-open="${esc(c.path)}"><time>${esc(c.date)}</time></button></li>`).join('')}</ul><p class="iv-note">${L.count} daily note${L.count === 1 ? '' : 's'} in the vault.</p>` : '<div class="iv-void"><b>0</b>daily notes yet.</div>']; },
@@ -167,7 +175,7 @@ function mount(root, api) {
       : claude.status === 'error' ? `<div class="iv-void">${esc(claude.text)}</div>`
       : `<pre class="iv-answer">${esc(claude.text)}</pre>${claude.draft ? `<div class="act"><button class="iv-btn p" data-claude-log>Add to today's log</button></div><p class="iv-note">Nothing is written until you press the button. Edit the entry afterwards in the log note if needed.</p>` : ''}${claude.mode === 'background' ? '<p class="iv-note">Read-only run: Claude could read notes but not change them.</p>' : ''}`],
     archived: () => ['Archived efforts', (data.archived || []).length ? `<ul class="iv-rows">${data.archived.map(a => `<li class="iv-prop"><span class="t">${esc(a.name)}</span><span class="to">${esc(a.folder)} · last changed ${esc(fmtIso(a.last))}</span><span class="act"><button class="iv-btn" data-open="${esc(a.path)}">Open</button><button class="iv-btn p" data-restore="${esc(a.folder)}">Restore</button></span></li>`).join('')}</ul><p class="iv-note">Restore moves the folder back to Efforts.</p>` : '<div class="iv-void"><b>0</b>archived efforts.</div>'],
-    recent: () => ['Recently', `${data.claudeMode && data.claudeMode !== 'off' ? '<div class="act" style="margin-bottom:10px"><button class="iv-btn" data-claude-log-draft>Draft today\'s log entry</button></div>' : ''}<ul class="iv-rows">${data.sessions.map(s => `<li><button class="iv-link" data-open="${esc(s.path)}"><time>${esc(s.date)}</time><b>${esc(s.title)}</b></button></li>`).join('')}</ul>`]
+    recent: () => ['Recently', `${data.claudeMode && data.claudeMode !== 'off' ? '<div class="act" style="margin-bottom:10px"><button class="iv-btn" data-claude-log-draft>Draft today\'s log entry</button></div>' : ''}${timeline(data.sessions)}`]
   };
   function startClaude(kind, payload, title) {
     const id = ++claude.id;

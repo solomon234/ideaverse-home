@@ -159,7 +159,7 @@ async function collect(io, settings, today) {
   for (const lf of logs) {
     const entries = P.parseLog(await readSafe(io, lf)).reverse();
     for (const en of entries) {
-      sessions.push({ date: P.formatDateLabel(en.label), title: P.trunc(en.title || 'Session', 90), path: lf });
+      sessions.push({ date: P.formatDateLabel(en.label), iso: (/\d{4}-\d{2}-\d{2}/.exec(en.label) || [''])[0], tag: ((/\(([^)]*)\)/.exec(en.label) || [])[1] || '').trim(), open: en.open.length, title: P.trunc(en.title || 'Session', 90), path: lf });
       if (en.open.length && openItems.length < 4) {
         for (const o of en.open) if (openItems.length < 4 && !openItems.some(x => x.title === up(P.trunc(o, 110)))) openItems.push({ title: up(P.trunc(o, 110)), why: 'From the log, ' + P.formatDateLabel(en.label) + ' (may already be done)', path: lf, effort: (efforts.find(e => o.toLowerCase().includes(e.name.toLowerCase())) || {}).name || '' });
       }
