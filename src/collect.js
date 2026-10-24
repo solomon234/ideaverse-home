@@ -14,6 +14,7 @@ const DEFAULT_SETTINGS = {
   efforts: {}
 };
 
+const ARCHIVE = 'Archived'; // Efforts/Archived holds efforts that were put away
 const base = p => p.split('/').pop();
 const join = (...a) => a.filter(Boolean).join('/').replace(/\/+/g, '/');
 
@@ -88,7 +89,7 @@ async function collectEffort(io, folder, cfg, S, today) {
 
   return {
     id: name.toLowerCase().replace(/[^a-z0-9]+/g, '-'), name, short: ov.short || (name.length > 18 ? name.split(/\s+/).slice(0, 2).join(' ') : name),
-    path: readmePath, boardPath: kanban ? kanban.path : null,
+    folder, path: readmePath, boardPath: kanban ? kanban.path : null,
     status: st.label, tone: st.tone, lever, summary: firstParagraph(body, secs), facts,
     last, daysAgo: P.daysBetween(last, today), weeks, art,
     todoOpen: todo.filter(g => /immediate/i.test(g.title)).flatMap(g => g.items.filter(i => !i.c).map(i => i.t))
@@ -104,11 +105,20 @@ async function collect(io, settings, today) {
   const ef = await io.list(join(R, 'Efforts')).catch(() => ({ files: [], folders: [] }));
   const efforts = [];
   for (const f of ef.folders) {
+    if (base(f) === ARCHIVE) continue;
     const e = await collectEffort(io, f, null, S, today);
     if (e) efforts.push(e);
   }
   efforts.sort((a, b) => a.daysAgo - b.daysAgo);
   out.efforts = efforts;
+
+  // archived efforts: folders under Efforts/Archived that still have a README
+  out.archived = [];
+  const ar = await io.list(join(R, 'Efforts', ARCHIVE)).catch(() => ({ folders: [] }));
+  for (const f of ar.folders) {
+    const readme = join(f, 'README.md');
+    if (await io.exists(readme)) out.archived.push({ name: base(f), folder: f, path: readme, last: await io.mtimeIso(readme) });
+  }
 
   // proposals
   const pdir = join(R, 'AIOS/Proposals');
@@ -156,4 +166,4 @@ async function collect(io, settings, today) {
   return out;
 }
 
-module.exports = { collect, DEFAULT_SETTINGS };
+module.exports = { collect, DEFAULT_SETTINGS, ARCHIVE };

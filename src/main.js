@@ -1,7 +1,7 @@
 'use strict';
 // Obsidian glue: registers the view, reads the vault into the io interface, keeps the dashboard live.
-const { Plugin, ItemView, PluginSettingTab, Setting, Notice, TFile } = require('obsidian');
-const { collect, DEFAULT_SETTINGS } = require('./collect');
+const { Plugin, ItemView, PluginSettingTab, Setting, Notice, TFile, TFolder } = require('obsidian');
+const { collect, DEFAULT_SETTINGS, ARCHIVE } = require('./collect');
 const { mount } = require('./ui');
 const P = require('./parse');
 
@@ -39,7 +39,9 @@ class HomeView extends ItemView {
     const plugin = this.plugin;
     this.ui = mount(this.contentEl, {
       open: path => plugin.openPath(path),
-      setProposalStatus: (path, status) => plugin.setProposalStatus(path, status)
+      setProposalStatus: (path, status) => plugin.setProposalStatus(path, status),
+      archiveEffort: folder => plugin.moveEffort(folder, true),
+      restoreEffort: folder => plugin.moveEffort(folder, false)
     });
     await plugin.refresh();
     this.ui.focus();
@@ -106,6 +108,27 @@ module.exports = class IdeaverseHome extends Plugin {
     let prev = '';
     await this.app.vault.process(f, text => { prev = (P.splitFrontmatter(text).fm.status || '').toLowerCase(); return P.setFrontmatterStatus(text, status); });
     return prev;
+  }
+
+  // Archiving moves the effort's whole folder to Efforts/Archived/<name>; restoring moves it back to Efforts/<name>.
+  // fileManager.renameFile keeps links to the moved notes working. Resolves to true when the move happened.
+  async moveEffort(folder, archive) {
+    const src = this.app.vault.getAbstractFileByPath(folder);
+    const name = folder.split('/').pop(), efforts = folder.split('/').slice(0, -(archive ? 1 : 2)).join('/');
+    const dest = archive ? `${efforts}/${ARCHIVE}/${name}` : `${efforts}/${name}`;
+    try {
+      if (!(src instanceof TFolder)) throw new Error(`${folder} is not a folder`);
+      if (this.app.vault.getAbstractFileByPath(dest)) throw new Error(`${dest} already exists`);
+      const parent = dest.split('/').slice(0, -1).join('/');
+      if (!this.app.vault.getAbstractFileByPath(parent)) await this.app.vault.createFolder(parent);
+      await this.app.fileManager.renameFile(src, dest);
+    } catch (e) {
+      new Notice(`Ideaverse home: could not ${archive ? 'archive' : 'restore'} ${name}. ${e.message}`);
+      return false;
+    }
+    new Notice(archive ? `Archived ${name} to ${dest}` : `Restored ${name} to ${dest}`);
+    await this.refresh();
+    return true;
   }
 };
 

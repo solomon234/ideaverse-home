@@ -2,6 +2,8 @@
 // The dashboard view. Plain DOM, no framework. mount(root, api) returns { update(data), destroy() }.
 //   api.open(path)                       open a note
 //   api.setProposalStatus(path, status)  rewrite a proposal's status line; resolves to the previous status
+//   api.archiveEffort(folder)            move an effort folder into Efforts/Archived; resolves to true if it moved
+//   api.restoreEffort(folder)            move it back out
 // All class names are prefixed iv- and styled under .ideaverse-root.
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -112,7 +114,7 @@ function mount(root, api) {
           ${e.lever ? `<div class="iv-lever iv-glass"><small>The lever</small><p>${esc(e.lever)}</p></div>` : ''}
           <div class="iv-spark"><svg width="154" height="34" viewBox="0 0 154 34" role="img" aria-label="Changes per week, last ${e.weeks.length} weeks: ${e.weeks.join(', ')}">${bars}</svg><small>Weeks with changes, last ${e.weeks.length}. From git history of this folder.</small></div>
           <details><summary>About this effort</summary>${e.summary ? `<p>${esc(e.summary)}</p>` : ''}${e.facts.length ? `<ul class="iv-facts">${e.facts.map(f => `<li>${esc(f)}</li>`).join('')}</ul>` : ''}
-            <div class="iv-links"><button class="iv-btn" data-open="${esc(e.path)}">Open README</button>${e.boardPath ? `<button class="iv-btn" data-open="${esc(e.boardPath)}">Open board</button>` : ''}</div></details></div>
+            <div class="iv-links"><button class="iv-btn" data-open="${esc(e.path)}">Open README</button>${e.boardPath ? `<button class="iv-btn" data-open="${esc(e.boardPath)}">Open board</button>` : ''}<button class="iv-btn" data-archive="${esc(e.folder)}">Archive effort</button></div></details></div>
         <div class="iv-art iv-glass">${art[e.art.kind](e.art)}</div></section>`;
     }).join('');
     $('.iv-dots').innerHTML = data.efforts.map((e, i) => `<button aria-label="${esc(e.short)}" data-i="${i}"><i></i></button>`).join('');
@@ -144,6 +146,7 @@ function mount(root, api) {
     atlas: () => { const L = data.layers.atlas; return ['Atlas', `<div class="iv-void"><b>${L.count}</b>${L.count === 1 ? 'note' : 'notes'} filed in Atlas.</div>${L.waiting.length ? `<ul class="iv-rows">${L.waiting.map(p => `<li class="iv-prop"><span class="t"><span class="iv-tag ${esc(p.status)}">${esc(p.status)}</span>${esc(p.topic)}</span><span class="to">→ ${esc(p.to)}</span><span class="act"><button class="iv-btn" data-open="${esc(p.path)}">Open</button></span></li>`).join('')}</ul><p class="iv-note">Proposals waiting to become notes in Atlas.</p>` : ''}`]; },
     calendar: () => { const L = data.layers.calendar; return ['Calendar', L.recent.length ? `<ul class="iv-rows">${L.recent.map(c => `<li><button class="iv-link" data-open="${esc(c.path)}"><time>${esc(c.date)}</time></button></li>`).join('')}</ul><p class="iv-note">${L.count} daily note${L.count === 1 ? '' : 's'} in the vault.</p>` : '<div class="iv-void"><b>0</b>daily notes yet.</div>']; },
     aios: () => ['AIOS · proposals tray', trayRows.length ? `<ul class="iv-rows">${trayRows.map((r, i) => r.marked ? rowMarked(r, i) : rowPending(r, i)).join('')}</ul><p class="iv-note">${data.proposals.counts.pending} pending and ${data.proposals.counts.draft} draft of ${data.proposals.files} files in Proposals. Marking a proposal edits only its status line; moving its content into the vault is still yours to do.</p>` : '<div class="iv-void"><b>0</b>proposals need a decision.</div>'],
+    archived: () => ['Archived efforts', (data.archived || []).length ? `<ul class="iv-rows">${data.archived.map(a => `<li class="iv-prop"><span class="t">${esc(a.name)}</span><span class="to">${esc(a.folder)} · last changed ${esc(fmtIso(a.last))}</span><span class="act"><button class="iv-btn" data-open="${esc(a.path)}">Open</button><button class="iv-btn p" data-restore="${esc(a.folder)}">Restore</button></span></li>`).join('')}</ul><p class="iv-note">Restore moves the folder back to Efforts.</p>` : '<div class="iv-void"><b>0</b>archived efforts.</div>'],
     recent: () => ['Recently', `<ul class="iv-rows">${data.sessions.map(s => `<li><button class="iv-link" data-open="${esc(s.path)}"><time>${esc(s.date)}</time><b>${esc(s.title)}</b></button></li>`).join('')}</ul>`]
   };
   function showView(key, from) {
@@ -161,6 +164,7 @@ function mount(root, api) {
     const all = [...data.efforts.map((e, i) => ({ t: e.name, k: 'effort', run: () => { showView('efforts'); go(i); } })),
       { t: 'Atlas', k: 'view', run: () => showView('atlas') }, { t: 'Calendar', k: 'view', run: () => showView('calendar') },
       { t: 'Proposals tray', k: 'AIOS', run: () => showView('aios') }, { t: 'Recently', k: 'view', run: () => showView('recent') },
+      { t: `Archived efforts (${(data.archived || []).length})`, k: 'view', run: () => showView('archived') },
       { t: 'Needs you', k: 'list', run: () => { showView('efforts'); setNeeds(true); } }];
     return all.filter(c => c.t.toLowerCase().includes(q));
   }
@@ -189,6 +193,12 @@ function mount(root, api) {
     if (t === layer || t.closest('.iv-x')) return showView('efforts');
     if (t === palEl) return closePal();
     const pi = t.closest('.iv-plist [data-i]'); if (pi && pal.items[+pi.dataset.i]) { const it = pal.items[+pi.dataset.i]; closePal(); it.run(); return; }
+    const ar = t.closest('[data-archive]');
+    if (ar) { // two clicks: the first arms the button, the second moves the folder
+      if (!ar.dataset.armed) { ar.dataset.armed = '1'; ar.textContent = 'Click again to archive'; setTimeout(() => { if (ar.isConnected) { delete ar.dataset.armed; ar.textContent = 'Archive effort'; } }, 4000); return; }
+      api.archiveEffort(ar.dataset.archive); return;
+    }
+    const rs = t.closest('[data-restore]'); if (rs) { api.restoreEffort(rs.dataset.restore).then(ok => { if (ok) showView('efforts'); }); return; }
     const act = t.closest('[data-act]');
     if (act) { const li = act.closest('.iv-prop'), r = trayRows[+li.dataset.i]; r.prev = r.status; r.marked = act.dataset.act; api.setProposalStatus(r.path, act.dataset.act).then(() => showView('aios')); return; }
     if (t.closest('[data-undo]')) { const li = t.closest('.iv-prop'), r = trayRows[+li.dataset.i]; api.setProposalStatus(r.path, r.prev).then(() => { r.marked = ''; showView('aios'); }); return; }

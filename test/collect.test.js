@@ -75,3 +75,15 @@ test('real vault: structure holds together', { skip: !REAL && 'set VAULT to run'
   }
   assert.strictEqual(d.layers.aios.toDecide, d.proposals.counts.pending + d.proposals.counts.draft);
 });
+
+test('Efforts/Archived is not an effort, and its efforts are listed as archived', async () => {
+  const root = makeVault({
+    'Efforts/Live/README.md': '# Live\n',
+    'Efforts/Archived/Old/README.md': '# Old\n',
+    'Efforts/Archived/Empty/notes.md': 'x'
+  });
+  const d = await collect(nodeIO(root), { rootFolder: '' }, '2026-10-23');
+  assert.deepStrictEqual(d.efforts.map(e => e.name), ['Live']);
+  assert.strictEqual(d.efforts[0].folder, 'Efforts/Live');
+  assert.deepStrictEqual(d.archived.map(a => [a.name, a.folder]), [['Old', 'Efforts/Archived/Old']]);
+});

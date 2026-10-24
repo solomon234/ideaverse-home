@@ -10,6 +10,8 @@
   const mem = {};
   const api = {
     open: p => window.__log.opened.push(p),
+    archiveEffort: async f => { window.__log.archived = (window.__log.archived || []).concat(f); return true; },
+    restoreEffort: async f => true,
     setProposalStatus: async (p, s) => { const prev = mem[p] || 'pending'; mem[p] = s; window.__log.status.push([p, s]); return prev; }
   };
   window.__ui = IdeaverseUI.mount(document.getElementById('root'), api);

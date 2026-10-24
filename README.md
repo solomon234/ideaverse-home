@@ -9,6 +9,8 @@ Each screen shows:
 - a **weekly activity strip** from the git history of the effort's folder;
 - a **picture drawn from the note itself**: a Kanban board as a grid of squares, a price table as a chart against a budget, a numbered steps list with its stop condition, or a todo list. Anything that cannot be read from a note, such as a map of services, can be described in settings.
 
+Each effort can be **archived** (two clicks, under *About this effort*); archived efforts are listed in the command bar's *Archived efforts* view, where they can be restored.
+
 A dock at the bottom opens **Atlas**, **Calendar**, a **proposals tray** and **recent sessions**. `Cmd/Ctrl+K` opens a command bar. An effort with no change for 60 days dims.
 
 It is opinionated: it assumes a vault laid out like this, and shows a "No efforts found" screen if it does not find one.
@@ -27,7 +29,7 @@ It is opinionated: it assumes a vault laid out like this, and shows a "No effort
 ## What it reads, writes and runs
 
 - **Reads** markdown notes under the root folder. Nothing leaves your machine; there are no network calls.
-- **Writes** one thing: the `status:` line in a proposal's frontmatter, when you press *Mark promoted* or *Dismiss* in the tray (with Undo). It never creates, moves or deletes notes.
+- **Writes** two things, both only when you press a button: the `status:` line in a proposal's frontmatter (*Mark promoted* or *Dismiss* in the tray, with Undo), and the location of an effort's folder (*Archive effort* moves it to `Efforts/Archived/<name>`, and *Restore* in the *Archived efforts* view moves it back, using Obsidian's own rename so links keep working). It never deletes notes.
 - **Runs** `git log` (through Node's `child_process`) on each effort folder to build the activity strip. If git is not installed, or the vault is not a git repository, the strip is empty and everything else works. This is why the plugin is desktop-only.
 
 ## Install
