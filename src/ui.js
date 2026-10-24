@@ -3,6 +3,8 @@
 //   api.open(path)                       open a note
 //   api.setProposalStatus(path, status)  rewrite a proposal's status line; resolves to the previous status
 //   api.completeLever(ref)               tick off the lever's source item; resolves to true if it did
+//   api.addTodo(target, text)            add a todo to effort.todoTarget; resolves to true if it did
+//   api.capture(text)                    append to today's scratch note; resolves to true if it did
 //   api.createEffort(name)               create Efforts/<name>/README.md; resolves to the folder, or '' if not created
 //   api.logMeeting({date,title,with,outcome,open})  append to that month's log; resolves to true if it did
 //   api.archiveEffort(folder)            move an effort folder into Efforts/Archived; resolves to true if it moved
@@ -84,6 +86,7 @@ function mount(root, api) {
       <span class="iv-sp"></span>
       <button class="iv-chip" data-new-effort>+ Effort</button>
       <button class="iv-chip" data-meeting>+ Meeting</button>
+      <button class="iv-chip" data-capture>+ Capture</button>
       <button class="iv-chip k" data-pal aria-label="Open the command bar">Jump <kbd data-n="kbd">⌘K</kbd></button>
       <span class="iv-clock" data-n="clock"></span>
     </header>
@@ -117,6 +120,7 @@ function mount(root, api) {
         <div class="iv-copy"><div class="iv-eyebrow"><span class="iv-st ${e.tone}">${esc(e.status)}</span><span>${i + 1} of ${N}</span><span class="iv-age ${old ? 'old' : ''}">Changed ${age} · ${fmtIso(e.last)}</span></div>
           <h1 ${e.name.length > 16 ? 'style="font-size:clamp(30px,4vw,60px)"' : ''}>${esc(e.name)}</h1>
           ${e.lever ? `<div class="iv-lever iv-glass"><small>The lever</small><p>${esc(e.lever)}</p>${e.leverRef ? `<button class="iv-btn" data-lever="${i}">Mark done</button>` : ''}</div>` : ''}
+          <form class="iv-add" data-form="todo" data-i="${i}"><input name="text" aria-label="Add a todo to ${esc(e.name)}" placeholder="Add a todo…" autocomplete="off" maxlength="200"><button class="iv-btn" type="submit">Add</button><small>Goes to ${esc(e.todoTarget.label)}.</small></form>
           <div class="iv-spark"><svg width="154" height="34" viewBox="0 0 154 34" role="img" aria-label="Changes per week, last ${e.weeks.length} weeks: ${e.weeks.join(', ')}">${bars}</svg><small>Weeks with changes, last ${e.weeks.length}. From git history of this folder.</small></div>
           <details><summary>About this effort</summary>${e.summary ? `<p>${esc(e.summary)}</p>` : ''}${e.facts.length ? `<ul class="iv-facts">${e.facts.map(f => `<li>${esc(f)}</li>`).join('')}</ul>` : ''}
             <div class="iv-links"><button class="iv-btn" data-open="${esc(e.path)}">Open README</button>${e.boardPath ? `<button class="iv-btn" data-open="${esc(e.boardPath)}">Open board</button>` : ''}<button class="iv-btn" data-archive="${esc(e.folder)}">Archive effort</button></div></details></div>
@@ -153,6 +157,7 @@ function mount(root, api) {
     aios: () => ['AIOS · proposals tray', trayRows.length ? `<ul class="iv-rows">${trayRows.map((r, i) => r.marked ? rowMarked(r, i) : rowPending(r, i)).join('')}</ul><p class="iv-note">${data.proposals.counts.pending} pending and ${data.proposals.counts.draft} draft of ${data.proposals.files} files in Proposals. Marking a proposal edits only its status line; moving its content into the vault is still yours to do.</p>` : '<div class="iv-void"><b>0</b>proposals need a decision.</div>'],
     newEffort: () => ['New effort', `<form class="iv-form" data-form="effort"><label>Name<input name="name" autocomplete="off" required maxlength="80"></label><p class="iv-note">Creates Efforts/&lt;name&gt;/README.md with a status line, an overview and a Todo List with one Immediate item.</p><p class="iv-err" role="alert" hidden></p><div class="act"><button class="iv-btn p" type="submit">Create effort</button></div></form>`],
     meeting: () => ['Log a meeting', `<form class="iv-form" data-form="meeting"><label>Title<input name="title" autocomplete="off" required maxlength="120"></label><label>Date<input name="date" type="date" value="${esc(data.today)}" required></label><label>With<input name="with" autocomplete="off" placeholder="Names, separated by commas"></label><label>Outcome<textarea name="outcome" rows="3" placeholder="What was decided or learned"></textarea></label><label>Open items<input name="open" autocomplete="off" placeholder="Separate with semicolons; they show up under Needs you"></label><p class="iv-note">Adds an entry to the end of that month's log in AIOS/Logs. Earlier entries are not touched.</p><p class="iv-err" role="alert" hidden></p><div class="act"><button class="iv-btn p" type="submit">Add to log</button></div></form>`],
+    capture: () => ['Capture to scratch', `<form class="iv-form" data-form="capture"><label>Note<textarea name="text" rows="4" required placeholder="A thought, a link, something to sort out later"></textarea></label><p class="iv-note">Adds a timestamped line to today's note in AIOS/Scratch (created if needed).</p><p class="iv-err" role="alert" hidden></p><div class="act"><button class="iv-btn p" type="submit">Capture</button></div></form>`],
     archived: () => ['Archived efforts', (data.archived || []).length ? `<ul class="iv-rows">${data.archived.map(a => `<li class="iv-prop"><span class="t">${esc(a.name)}</span><span class="to">${esc(a.folder)} · last changed ${esc(fmtIso(a.last))}</span><span class="act"><button class="iv-btn" data-open="${esc(a.path)}">Open</button><button class="iv-btn p" data-restore="${esc(a.folder)}">Restore</button></span></li>`).join('')}</ul><p class="iv-note">Restore moves the folder back to Efforts.</p>` : '<div class="iv-void"><b>0</b>archived efforts.</div>'],
     recent: () => ['Recently', `<ul class="iv-rows">${data.sessions.map(s => `<li><button class="iv-link" data-open="${esc(s.path)}"><time>${esc(s.date)}</time><b>${esc(s.title)}</b></button></li>`).join('')}</ul>`]
   };
@@ -172,7 +177,7 @@ function mount(root, api) {
       { t: 'Atlas', k: 'view', run: () => showView('atlas') }, { t: 'Calendar', k: 'view', run: () => showView('calendar') },
       { t: 'Proposals tray', k: 'AIOS', run: () => showView('aios') }, { t: 'Recently', k: 'view', run: () => showView('recent') },
       { t: `Archived efforts (${(data.archived || []).length})`, k: 'view', run: () => showView('archived') },
-      { t: 'New effort…', k: 'create', run: () => showView('newEffort') }, { t: 'Log a meeting…', k: 'log', run: () => showView('meeting') },
+      { t: 'New effort…', k: 'create', run: () => showView('newEffort') }, { t: 'Log a meeting…', k: 'log', run: () => showView('meeting') }, { t: 'Capture to scratch…', k: 'log', run: () => showView('capture') },
       { t: 'Needs you', k: 'list', run: () => { showView('efforts'); setNeeds(true); } }];
     return all.filter(c => c.t.toLowerCase().includes(q));
   }
@@ -205,6 +210,7 @@ function mount(root, api) {
     if (lv) { const e = data.efforts[+lv.dataset.lever]; if (e && e.leverRef) { lv.disabled = true; api.completeLever(e.leverRef).then(ok => { if (!ok && lv.isConnected) lv.disabled = false; }); } return; }
     if (t.closest('[data-new-effort]')) return showView('newEffort');
     if (t.closest('[data-meeting]')) return showView('meeting');
+    if (t.closest('[data-capture]')) return showView('capture');
     const ar = t.closest('[data-archive]');
     if (ar) { // two clicks: the first arms the button, the second moves the folder
       if (!ar.dataset.armed) { ar.dataset.armed = '1'; ar.textContent = 'Click again to archive'; setTimeout(() => { if (ar.isConnected) { delete ar.dataset.armed; ar.textContent = 'Archive effort'; } }, 4000); return; }
@@ -220,6 +226,12 @@ function mount(root, api) {
     const form = ev.target.closest('[data-form]'); if (!form) return;
     ev.preventDefault();
     const v = {}; for (const el of form.elements) if (el.name) v[el.name] = el.value;
+    if (form.dataset.form === 'todo') {
+      const e = data.efforts[+form.dataset.i]; if (!e || !v.text.trim()) return;
+      form.querySelector('[type=submit]').disabled = true;
+      api.addTodo(e.todoTarget, v.text).then(ok => { const b = form.querySelector('[type=submit]'); if (ok) form.reset(); if (b && b.isConnected) b.disabled = false; });
+      return;
+    }
     const btn = form.querySelector('[type=submit]'); btn.disabled = true;
     const fail = () => { btn.disabled = false; const p = form.querySelector('.iv-err'); p.textContent = 'Not saved. Obsidian shows the reason in a notice.'; p.hidden = false; };
     if (form.dataset.form === 'effort') {
@@ -227,7 +239,8 @@ function mount(root, api) {
         if (!folder) return fail();
         showView('efforts'); const i = data.efforts.findIndex(e => e.folder === folder); if (i >= 0) go(i);
       });
-    } else api.logMeeting(v).then(ok => ok ? showView('recent') : fail());
+    } else if (form.dataset.form === 'capture') api.capture(v.text).then(ok => ok ? showView('efforts') : fail());
+    else api.logMeeting(v).then(ok => ok ? showView('recent') : fail());
   });
   on(root, 'mouseover', ev => { const c = ev.target.closest('.iv-cell'); if (c) c.closest('.iv-art').querySelector('.iv-cap').innerHTML = `<b>${esc(c.dataset.s)}:</b> ${esc(c.dataset.t)}`; });
   on(root, 'focusin', ev => { const c = ev.target.closest('.iv-cell'); if (c) c.closest('.iv-art').querySelector('.iv-cap').innerHTML = `<b>${esc(c.dataset.s)}:</b> ${esc(c.dataset.t)}`; });

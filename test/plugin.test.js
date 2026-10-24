@@ -99,6 +99,13 @@ test('new effort, meeting log and lever completion write what they say they writ
 
   assert.strictEqual(await plugin.completeLever({ kind: 'todo', path: 'V/Efforts/A/README.md', text: 'One' }), true);
   assert.strictEqual(files['V/Efforts/A/README.md'], '# A\n- [x] One\n- [ ] Two\n');
+  assert.strictEqual(await plugin.addTodo({ kind: 'todo', path: 'V/Efforts/A/README.md', label: 'x' }, 'Three'), true);
+  assert.strictEqual(files['V/Efforts/A/README.md'], '# A\n- [x] One\n- [ ] Two\n\n## Todo List\n\n### Immediate\n\n- [ ] Three\n');
+  assert.strictEqual(await plugin.addTodo({ kind: 'todo', path: 'V/Efforts/A/README.md', label: 'x' }, '  '), false);
+  assert.strictEqual(await plugin.capture('a thought'), true);
+  const scratch = Object.keys(files).find(k => k.startsWith('V/AIOS/Scratch/scratch-'));
+  assert.ok(/^# Scratch \d{4}-\d{2}-\d{2}\n\n## Quick capture\n\n- \d\d:\d\d — a thought\n$/.test(files[scratch]));
+  assert.strictEqual(await plugin.capture(' '), false);
   assert.strictEqual(await plugin.completeLever({ kind: 'todo', path: 'V/Efforts/A/README.md', text: 'Gone' }), false);
-  assert.strictEqual(files['V/Efforts/A/README.md'], '# A\n- [x] One\n- [ ] Two\n', 'a missed target leaves the note alone');
+  assert.ok(files['V/Efforts/A/README.md'].includes('- [x] One\n- [ ] Two\n'), 'a missed target leaves the note alone');
 });

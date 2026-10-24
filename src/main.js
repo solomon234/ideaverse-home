@@ -41,6 +41,8 @@ class HomeView extends ItemView {
       open: path => plugin.openPath(path),
       setProposalStatus: (path, status) => plugin.setProposalStatus(path, status),
       completeLever: ref => plugin.completeLever(ref),
+      addTodo: (target, text) => plugin.addTodo(target, text),
+      capture: text => plugin.capture(text),
       createEffort: name => plugin.createEffort(name),
       logMeeting: m => plugin.logMeeting(m),
       archiveEffort: folder => plugin.moveEffort(folder, true),
@@ -140,6 +142,47 @@ module.exports = class IdeaverseHome extends Plugin {
     });
     await this.refresh();
     return true;
+  }
+
+  // Adds a todo to the note named by an effort's todoTarget. Only adds a line; nothing existing is rewritten.
+  async addTodo(target, text) {
+    try {
+      const f = target && this.app.vault.getAbstractFileByPath(target.path);
+      if (!(f instanceof TFile)) throw new Error('The note no longer exists.');
+      let done = false;
+      await this.app.vault.process(f, t => {
+        const next = target.kind === 'board' ? P.addBoardCard(t, text) : P.addTodoItem(t, text);
+        if (next === null) return t;
+        done = true; return next;
+      });
+      if (!done) throw new Error('Nothing to add, or no lane to add it to.');
+      new Notice(`Added to ${target.label}`);
+      await this.refresh();
+      return true;
+    } catch (e) {
+      new Notice(`Ideaverse home: could not add the todo. ${e.message}`);
+      return false;
+    }
+  }
+
+  // Appends a line to today's scratch note (AIOS/Scratch/scratch-YYYY-MM-DD.md), creating it if needed.
+  async capture(text) {
+    try {
+      const d = new Date(), time = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`, day = localIso();
+      const path = this.underRoot(`AIOS/Scratch/scratch-${day}.md`), f = this.app.vault.getAbstractFileByPath(path);
+      if (P.appendCapture('', time, text) === null) throw new Error('Write something to capture.');
+      if (f instanceof TFile) await this.app.vault.process(f, t => P.appendCapture(t, time, text));
+      else {
+        const dir = path.split('/').slice(0, -1).join('/');
+        if (!this.app.vault.getAbstractFileByPath(dir)) await this.app.vault.createFolder(dir);
+        await this.app.vault.create(path, `# Scratch ${day}\n\n` + P.appendCapture('', time, text));
+      }
+      new Notice(`Captured in ${path.split('/').pop()}`);
+      return true;
+    } catch (e) {
+      new Notice(`Ideaverse home: could not capture. ${e.message}`);
+      return false;
+    }
   }
 
   // Creates Efforts/<name>/README.md from a small template. Resolves to the new folder, or '' if nothing was created.

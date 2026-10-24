@@ -142,3 +142,29 @@ test('a new effort README reads back as an effort with a lever', () => {
   assert.strictEqual(P.parseStatus(fm, body, secs).tone, 'active');
   assert.strictEqual(P.pickLever(secs), 'Write down the first move');
 });
+
+test('addTodoItem appends to the Immediate list, or adds one', () => {
+  const note = '# x\n\n## Todo List\n\n### Immediate\n\n- [ ] One\n- [x] Two\n\n### Later\n\n- [ ] Three\n';
+  assert.strictEqual(P.addTodoItem(note, '  Four\n'), '# x\n\n## Todo List\n\n### Immediate\n\n- [ ] One\n- [x] Two\n- [ ] Four\n\n### Later\n\n- [ ] Three\n');
+  assert.strictEqual(P.addTodoItem('# x\n### Immediate\n', 'A'), '# x\n### Immediate\n\n- [ ] A\n');
+  assert.strictEqual(P.addTodoItem('# x\n\ntext\n', 'A'), '# x\n\ntext\n\n## Todo List\n\n### Immediate\n\n- [ ] A\n');
+  assert.strictEqual(P.addTodoItem('# x', '   '), null);
+  assert.strictEqual(P.pickLever(P.sections(P.addTodoItem('# x\n', 'A'))), 'A');
+});
+
+test('addBoardCard goes to the first lane that is not done, and the board still parses', () => {
+  const board = '---\n\nkanban-plugin: board\n\n---\n\n## new\n\n- [ ] One\n\n\n## done\n\n\n%% kanban:settings\n%%';
+  const out = P.addBoardCard(board, 'Two');
+  assert.ok(out.includes('## new\n\n- [ ] One\n- [ ] Two\n\n\n## done'));
+  assert.deepStrictEqual(P.parseKanban(out).map(c => c.t), ['One', 'Two']);
+  assert.deepStrictEqual(P.kanbanLanes(board), [{ title: 'new', done: false }, { title: 'done', done: true }]);
+  assert.strictEqual(P.addBoardCard('## done\n', 'x'), null);
+});
+
+test('appendCapture reuses a trailing Quick capture section only', () => {
+  const first = P.appendCapture('# Scratch\n', '09:05', 'a\nthought');
+  assert.strictEqual(first, '# Scratch\n\n## Quick capture\n\n- 09:05 — a thought\n');
+  assert.strictEqual(P.appendCapture(first, '09:10', 'b'), first + '- 09:10 — b\n');
+  assert.ok(P.appendCapture(first + '\n## Other\n', '09:11', 'c').endsWith('## Other\n\n## Quick capture\n\n- 09:11 — c\n'));
+  assert.strictEqual(P.appendCapture('', '09:00', ' '), null);
+});

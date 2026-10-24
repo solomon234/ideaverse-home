@@ -11,6 +11,8 @@
   const api = {
     open: p => window.__log.opened.push(p),
     completeLever: async r => { (window.__log.levers = window.__log.levers || []).push(r); return true; },
+    addTodo: async (t, x) => { (window.__log.todos = window.__log.todos || []).push([t, x]); return true; },
+    capture: async x => { (window.__log.captures = window.__log.captures || []).push(x); return true; },
     createEffort: async n => { (window.__log.created = window.__log.created || []).push(n); return ''; },
     logMeeting: async m => { (window.__log.meetings = window.__log.meetings || []).push(m); return true; },
     archiveEffort: async f => { window.__log.archived = (window.__log.archived || []).concat(f); return true; },

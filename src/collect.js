@@ -57,7 +57,7 @@ async function collectEffort(io, folder, cfg, S, today) {
   for (const f of listing.files) {
     if (!/\.md$/.test(f) || base(f) === 'README.md') continue;
     const t = await readSafe(io, f);
-    if (P.isKanban(t)) { kanban = { path: f, cards: P.parseKanban(t) }; break; }
+    if (P.isKanban(t)) { kanban = { path: f, cards: P.parseKanban(t), lane: P.kanbanLanes(t).find(l => !l.done) }; break; }
   }
 
   let art = null, facts = [];
@@ -73,6 +73,12 @@ async function collectEffort(io, folder, cfg, S, today) {
   if (art.kind === 'prices' && art.saved != null && art.goal) facts.push(`Saved ${Math.round(art.saved / art.goal * 100)}% of the goal`);
   if (art.kind === 'pipeline') { const all = art.groups.flatMap(g => g.items); facts.push(`${all.filter(i => !i.c).length} open of ${all.length} todo items`); }
   if (art.kind === 'ladder') facts.push(`${art.steps.filter(s => s.c).length} of ${art.steps.length} steps done`);
+
+  // Where "add a todo" writes: a card in the board's first open lane, else the README's Immediate list.
+  const hasImmediate = secs.some(s => s.level > 0 && /^immediate/i.test(s.title));
+  const todoTarget = kanban && kanban.lane
+    ? { kind: 'board', path: kanban.path, label: `the “${kanban.lane.title}” lane of the board` }
+    : { kind: 'todo', path: readmePath, label: hasImmediate ? 'Immediate in the README' : 'a new Immediate list in the README' };
 
   // The lever, and where it comes from so it can be ticked off. A lever set in settings has no source.
   let lever = '', leverRef = null;
@@ -92,7 +98,7 @@ async function collectEffort(io, folder, cfg, S, today) {
   return {
     id: name.toLowerCase().replace(/[^a-z0-9]+/g, '-'), name, short: ov.short || (name.length > 18 ? name.split(/\s+/).slice(0, 2).join(' ') : name),
     folder, path: readmePath, boardPath: kanban ? kanban.path : null,
-    status: st.label, tone: st.tone, lever, leverRef, summary: firstParagraph(body, secs), facts,
+    status: st.label, tone: st.tone, lever, leverRef, todoTarget, summary: firstParagraph(body, secs), facts,
     last, daysAgo: P.daysBetween(last, today), weeks, art,
     todoOpen: todo.filter(g => /immediate/i.test(g.title)).flatMap(g => g.items.filter(i => !i.c).map(i => i.t))
   };

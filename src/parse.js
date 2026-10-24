@@ -220,11 +220,52 @@ function completeBoardCard(text, itemText) {
   card[0] = card[0].replace('[ ]', '[x]');
   const lane = lines.findIndex(l => /^## /.test(l) && /done|complete|archive/i.test(l));
   if (lane < 0) { lines.splice(it.start, 0, ...card); return lines.join('\n'); }
-  let end = lines.findIndex((l, i) => i > lane && /^(## |%% )/.test(l));
-  if (end < 0) end = lines.length;
-  while (end - 1 > lane && lines[end - 1].trim() === '') end--;
-  lines.splice(end, 0, ...(end === lane + 1 ? [''] : []), ...card);
+  insertAtSectionEnd(lines, lane, /^(## |%% )/, card);
   return lines.join('\n');
+}
+
+// Puts new lines after the last non-blank line of the section that starts at lines[head] and ends at the next line matching stop.
+// An empty section gets a blank line first, the way Obsidian writes it.
+function insertAtSectionEnd(lines, head, stop, add) {
+  let end = lines.findIndex((l, i) => i > head && stop.test(l));
+  if (end < 0) end = lines.length;
+  while (end - 1 > head && lines[end - 1].trim() === '') end--;
+  lines.splice(end, 0, ...(end === head + 1 ? [''] : []), ...add);
+}
+
+const oneLine = s => String(s || '').replace(/\s+/g, ' ').trim();
+
+// Lanes of a Kanban board in order: [{ title, done }].
+function kanbanLanes(text) {
+  return sections(splitFrontmatter(text).body).filter(s => s.level === 2).map(s => ({ title: s.title, done: /done|complete|archive/i.test(s.title) }));
+}
+
+// Adds an unchecked card at the end of the first lane that is not a done lane.
+function addBoardCard(text, item) {
+  const t = oneLine(item), lines = text.split('\n');
+  const lane = lines.findIndex(l => /^## /.test(l) && !/done|complete|archive/i.test(l));
+  if (!t || lane < 0) return null;
+  insertAtSectionEnd(lines, lane, /^(## |%% )/, ['- [ ] ' + t]);
+  return lines.join('\n');
+}
+
+// Adds an unchecked item at the end of the "Immediate" list. If the note has none, a "## Todo List / ### Immediate" is added at the end.
+function addTodoItem(text, item) {
+  const t = oneLine(item), lines = text.split('\n');
+  if (!t) return null;
+  let fence = false, head = -1;
+  lines.forEach((l, i) => { if (/^\s*```/.test(l)) fence = !fence; if (!fence && head < 0 && /^#{1,6}\s+immediate/i.test(l)) head = i; });
+  if (head >= 0) { insertAtSectionEnd(lines, head, /^#{1,6}\s/, ['- [ ] ' + t]); return lines.join('\n'); }
+  return text.replace(/\s*$/, '') + '\n\n## Todo List\n\n### Immediate\n\n- [ ] ' + t + '\n';
+}
+
+// Quick capture: bullets under a "Quick capture" heading, which is reused only when it is the last heading in the note.
+function appendCapture(text, time, note) {
+  const t = oneLine(note);
+  if (!t) return null;
+  const heads = text.split('\n').filter(l => /^#{1,6}\s/.test(l)), bullet = `- ${time} — ${t}`;
+  if (heads.length && /^##\s+Quick capture\s*$/.test(heads[heads.length - 1])) return text.replace(/\s*$/, '') + '\n' + bullet + '\n';
+  return (text.trim() ? text.replace(/\s*$/, '') + '\n\n' : '') + '## Quick capture\n\n' + bullet + '\n';
 }
 
 // A meeting for the session log, in the shape parseLog reads. Fields are single lines; open items are separated by semicolons.
@@ -310,6 +351,6 @@ function weekBuckets(dates, todayIso, n) {
 
 module.exports = {
   clean, trunc, splitFrontmatter, sections, listItems, parseStatus, isKanban, parseKanban, parseTables, money,
-  parsePrices, parseSteps, parseTodoGroups, pickLever, pickLeverItem, checkOffItem, completeBoardCard, formatMeetingEntry, newEffortReadme, parseProposal, parseLog, formatDateLabel, formatIso,
+  parsePrices, parseSteps, parseTodoGroups, pickLever, pickLeverItem, checkOffItem, completeBoardCard, kanbanLanes, addBoardCard, addTodoItem, appendCapture, formatMeetingEntry, newEffortReadme, parseProposal, parseLog, formatDateLabel, formatIso,
   setFrontmatterStatus, daysBetween, weekBuckets
 };

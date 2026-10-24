@@ -101,3 +101,17 @@ test('the lever carries its source, except when set in settings', async () => {
   assert.deepStrictEqual(by('B').leverRef, { kind: 'board', path: 'Efforts/B/board.md', text: 'Card' });
   assert.strictEqual(by('C').leverRef, null);
 });
+
+test('the todo target is the board\'s first open lane, else the README Immediate list', async () => {
+  const root = makeVault({
+    'Efforts/A/README.md': '# A\n## Todo List\n### Immediate\n- [ ] Do a\n',
+    'Efforts/B/README.md': '# B\n',
+    'Efforts/B/board.md': '---\n\nkanban-plugin: board\n\n---\n\n## backlog\n\n## done\n',
+    'Efforts/C/README.md': '# C\n'
+  });
+  const d = await collect(nodeIO(root), { rootFolder: '' }, '2026-10-23');
+  const by = n => d.efforts.find(e => e.name === n).todoTarget;
+  assert.deepStrictEqual(by('A'), { kind: 'todo', path: 'Efforts/A/README.md', label: 'Immediate in the README' });
+  assert.deepStrictEqual([by('B').kind, by('B').path], ['board', 'Efforts/B/board.md']);
+  assert.strictEqual(by('C').label, 'a new Immediate list in the README');
+});

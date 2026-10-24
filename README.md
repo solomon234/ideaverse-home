@@ -34,6 +34,8 @@ It is opinionated: it assumes a vault laid out like this, and shows a "No effort
   - the location of an effort's folder (*Archive effort* moves it to `Efforts/Archived/<name>`; *Restore* in the *Archived efforts* view moves it back, using Obsidian's own rename so links keep working);
   - *Mark done* on the lever: ticks the item in its note (`- [ ]` to `- [x]`), or moves a Kanban card to the board's done lane, with Undo;
   - *+ Effort*: creates `Efforts/<name>/README.md` from a small template;
+  - the add-a-todo box on an effort's screen: adds one `- [ ]` line to the end of the note's Immediate list (or a card to the first open lane of its Kanban board); if the note has no Immediate list, a `## Todo List` / `### Immediate` is added at the end. The line under the box says which;
+  - *+ Capture*: appends a timestamped bullet under a `## Quick capture` heading in today's `AIOS/Scratch/scratch-YYYY-MM-DD.md` (created if needed);
   - *+ Meeting*: appends one entry to the end of that month's `AIOS/Logs/log-YYYY-MM.md` (creating the file if needed) in the form `**date (meeting)** — Title`, with optional `With`, `Outcome` and `Open` lines.
 
   It never deletes notes and never rewrites earlier text.
