@@ -105,6 +105,7 @@ module.exports = class IdeaverseHome extends Plugin {
       const data = await collect(obsidianIO(this.app), this.settings, localIso());
       data.staleDays = this.settings.staleDays;
       data.claudeMode = this.settings.claudeMode;
+      data.claudeSessions = this.claudeSessions();
       for (const v of open) v.ui.update(data);
     } catch (e) {
       console.error('[ideaverse-home] could not read the vault', e);
@@ -362,6 +363,7 @@ module.exports = class IdeaverseHome extends Plugin {
   claudeBinary() {
     const fs = require('fs'), home = require('os').homedir();
     if (this.settings.claudePath) return fs.existsSync(this.settings.claudePath) ? this.settings.claudePath : null;
+    if (process.platform === 'win32') return [`${home}\\.local\\bin\\claude.exe`, `${home}\\.claude\\local\\claude.exe`].find(p => fs.existsSync(p)) || null;
     return ['/opt/homebrew/bin/claude', '/usr/local/bin/claude', `${home}/.local/bin/claude`, `${home}/.claude/local/claude`].find(p => fs.existsSync(p)) || null;
   }
 
@@ -392,7 +394,69 @@ module.exports = class IdeaverseHome extends Plugin {
       const status = await this.gitText(['status', '--short', '--', '.']);
       return { cwd: root, prompt: K.logDraft({ date, changes, status }), title: `Draft log entry for ${date}`, draft: true };
     }
+    if (kind === 'resume') {
+      if (!/^[0-9a-f-]{36}$/i.test(String(p.id || ''))) throw new Error('That session has no usable id.');
+      return { cwd: require('fs').existsSync(p.cwd || '') ? p.cwd : root, resume: p.id, title: 'Resume ' + (p.name || 'session') };
+    }
     throw new Error('Unknown request: ' + kind);
+  }
+
+  // Claude Code keeps each session as ~/.claude/projects/<folder slug>/<id>.jsonl. Newest first; the title is the last /rename (or the auto title) near the end of the file.
+  claudeSessions() {
+    const fs = require('fs'), path = require('path'), base = this.baseAbs();
+    if (!base) return [];
+    const proj = path.join(require('os').homedir(), '.claude', 'projects'), slug = base.replace(/[^A-Za-z0-9]/g, '-');
+    const norm = s => String(s).replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase(), root = norm(base);
+    const cache = this.sessionCache = this.sessionCache || new Map(), out = [], seen = new Set();
+    let dirs = [];
+    try { dirs = fs.readdirSync(proj).filter(d => d === slug || d.startsWith(slug + '-')); } catch (e) { return []; }
+    for (const d of dirs) {
+      let files = [];
+      try { files = fs.readdirSync(path.join(proj, d)).filter(f => f.endsWith('.jsonl')); } catch (e) { continue; }
+      for (const f of files) {
+        const fp = path.join(proj, d, f);
+        let st;
+        try { st = fs.statSync(fp); } catch (e) { continue; }
+        seen.add(fp);
+        let hit = cache.get(fp);
+        if (!hit || hit.m !== st.mtimeMs || hit.s !== st.size) { hit = { m: st.mtimeMs, s: st.size, info: this.readSessionInfo(fp, st.size) }; cache.set(fp, hit); }
+        const i = hit.info;
+        if (i && (!i.cwd || norm(i.cwd) === root || norm(i.cwd).startsWith(root + '/'))) out.push({ id: f.slice(0, -6), mtime: st.mtimeMs, title: i.title, cwd: i.cwd || base });
+      }
+    }
+    for (const k of [...cache.keys()]) if (!seen.has(k)) cache.delete(k);
+    return out.sort((a, b) => b.mtime - a.mtime).slice(0, 60);
+  }
+
+  readSessionInfo(fp, size) {
+    const fs = require('fs');
+    let fd = null;
+    try {
+      fd = fs.openSync(fp, 'r');
+      const len = Math.min(size, 262144), buf = Buffer.alloc(len);
+      fs.readSync(fd, buf, 0, len, size - len);
+      const t = buf.toString('utf8');
+      const grab = re => {
+        const g = new RegExp(re.source, 'g');
+        let m, r = null;
+        while ((m = g.exec(t))) r = m[1];
+        if (r === null) return null;
+        try { return JSON.parse('"' + r + '"'); } catch (e) { return r; }
+      };
+      const title = grab(/"customTitle":"((?:[^"\\]|\\.)*)"/) || grab(/"aiTitle":"((?:[^"\\]|\\.)*)"/);
+      if (!title) return null;
+      // Resume needs the folder the session started in; later records can carry a cwd the shell moved to.
+      const hl = Math.min(size, 65536), hb = Buffer.alloc(hl);
+      fs.readSync(fd, hb, 0, hl, 0);
+      const first = /"cwd":"((?:[^"\\]|\\.)*)"/.exec(hb.toString('utf8'));
+      let cwd = null;
+      try { cwd = first ? JSON.parse('"' + first[1] + '"') : grab(/"cwd":"((?:[^"\\]|\\.)*)"/); } catch (e) {}
+      return { title, cwd };
+    } catch (e) {
+      return null;
+    } finally {
+      if (fd !== null) try { fs.closeSync(fd); } catch (e) {}
+    }
   }
 
   // Resolves to { ok, text, error, mode, draft }. Never throws.
@@ -403,7 +467,7 @@ module.exports = class IdeaverseHome extends Plugin {
       const bin = this.claudeBinary();
       if (!bin) throw new Error('Could not find the claude command. Set its path under Settings, Ideaverse Home.');
       const task = await this.claudeTask(kind, payload);
-      if (mode === 'terminal') return await this.openInTerminal(bin, task);
+      if (mode === 'terminal' || task.resume) return await this.openInTerminal(bin, task);
       return await this.runHeadless(bin, task);
     } catch (e) {
       return { ok: false, error: e.message, mode };
@@ -412,20 +476,52 @@ module.exports = class IdeaverseHome extends Plugin {
 
   openInTerminal(bin, task) {
     return new Promise((resolve, reject) => {
-      const cmd = `cd '${task.cwd.replace(/'/g, "'\\''")}' && '${bin}' '${task.prompt.replace(/'/g, "'\\''")}'`;
+      const cmd = `cd '${task.cwd.replace(/'/g, "'\\''")}' && '${bin}' ${task.resume ? `--resume '${task.resume}'` : `'${task.prompt.replace(/'/g, "'\\''")}'`}`;
+      if (process.platform === 'win32') return this.openInWindowsTerminal(bin, task).then(resolve, reject);
       if (process.platform !== 'darwin') {
-        navigator.clipboard.writeText(cmd).then(() => resolve({ ok: true, mode: 'terminal', text: 'Terminal launch is macOS only here. The command is on your clipboard: paste it into a terminal.' }), reject);
+        navigator.clipboard.writeText(cmd).then(() => resolve({ ok: true, mode: 'terminal', text: 'Terminal launch is only built for macOS and Windows here. The command is on your clipboard: paste it into a terminal.' }), reject);
         return;
       }
-      require('child_process').execFile('osascript', ['-e', K.terminalScript(bin, task.cwd, task.prompt)], err =>
+      require('child_process').execFile('osascript', ['-e', K.terminalScript(bin, task.cwd, task.prompt, task.resume)], err =>
         err ? reject(new Error('Could not open Terminal. ' + err.message)) : resolve({ ok: true, mode: 'terminal', text: 'Opened in Terminal. Claude asks before it changes anything there.' }));
+    });
+  }
+
+  // Windows: the prompt and a small PowerShell script go to the temp folder (no quoting through cmd), then open in Windows Terminal, or a plain console window if wt.exe is missing.
+  openInWindowsTerminal(bin, task) {
+    return new Promise((resolve, reject) => {
+      const fs = require('fs'), os = require('os'), path = require('path'), cp = require('child_process');
+      const stamp = Date.now(), promptFile = path.join(os.tmpdir(), `ideaverse-claude-${stamp}.txt`), script = path.join(os.tmpdir(), `ideaverse-claude-${stamp}.ps1`);
+      const q = s => "'" + String(s).replace(/'/g, "''") + "'";
+      try {
+        if (!task.resume) fs.writeFileSync(promptFile, task.prompt, 'utf8');
+        fs.writeFileSync(script, '﻿' + [
+          `Set-Location -LiteralPath ${q(task.cwd)}`,
+          ...(task.resume ? [`& ${q(bin)} --resume ${q(task.resume)}`] : [
+            `$p = Get-Content -Raw -Encoding UTF8 -LiteralPath ${q(promptFile)}`,
+            `Remove-Item -LiteralPath ${q(promptFile)} -ErrorAction SilentlyContinue`,
+            // Windows PowerShell 5.1 (and legacy argument passing) drops embedded double quotes unless they are escaped.
+            `if ($PSVersionTable.PSVersion.Major -lt 7 -or $PSNativeCommandArgumentPassing -eq 'Legacy') { $p = $p -replace '"', '\\"' }`,
+            `& ${q(bin)} $p`
+          ])
+        ].join('\r\n'), 'utf8');
+      } catch (e) {
+        return reject(new Error('Could not prepare the launch script. ' + e.message));
+      }
+      const ps = ['powershell.exe', '-NoExit', '-ExecutionPolicy', 'Bypass', '-File', script];
+      const launch = (cmd, args, fallback) => {
+        const child = cp.spawn(cmd, args, { detached: true, stdio: 'ignore' });
+        child.once('error', err => (fallback ? fallback() : reject(new Error('Could not open a terminal. ' + err.message))));
+        child.once('spawn', () => { child.unref(); resolve({ ok: true, mode: 'terminal', text: 'Opened in a terminal window. Claude asks before it changes anything there.' }); });
+      };
+      launch('wt.exe', ['-d', task.cwd, ...ps], () => launch('cmd.exe', ['/c', 'start', '', '/D', task.cwd, ...ps]));
     });
   }
 
   runHeadless(bin, task) {
     return new Promise(resolve => {
       const home = require('os').homedir();
-      const env = Object.assign({}, process.env, { PATH: [process.env.PATH, '/opt/homebrew/bin', '/usr/local/bin', `${home}/.local/bin`].filter(Boolean).join(':') });
+      const env = Object.assign({}, process.env, { PATH: [process.env.PATH, ...(process.platform === 'win32' ? [] : ['/opt/homebrew/bin', '/usr/local/bin', `${home}/.local/bin`])].filter(Boolean).join(require('path').delimiter) });
       const child = require('child_process').spawn(bin, K.headlessArgs(task.prompt), { cwd: task.cwd, env, stdio: ['ignore', 'pipe', 'pipe'] });
       this.claudeProc = child;
       let out = '', err = '', done = false;

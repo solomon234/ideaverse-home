@@ -38,10 +38,11 @@ const entryDate = entry => (/^\*\*(\d{4}-\d{2}-\d{2})/.exec(entry) || [])[1] || 
 // Arguments for a background run. --no-session-persistence keeps these one-off runs out of the session history.
 const headlessArgs = prompt => ['-p', prompt, '--tools', READ_ONLY_TOOLS, '--no-session-persistence', '--append-system-prompt', SYSTEM];
 
-// AppleScript that opens Terminal in a folder and starts an interactive claude with the prompt.
-function terminalScript(claudePath, dir, prompt) {
+// AppleScript that opens Terminal in a folder and starts an interactive claude with the prompt, or resumes a session when resumeId is given.
+function terminalScript(claudePath, dir, prompt, resumeId) {
   const lit = s => '"' + String(s).replace(/\\/g, '\\\\').replace(/"/g, '\\"').split('\n').join('" & linefeed & "') + '"';
-  return `tell application "Terminal"\nactivate\ndo script "cd " & quoted form of ${lit(dir)} & " && " & quoted form of ${lit(claudePath)} & " " & quoted form of ${lit(prompt)}\nend tell`;
+  const tail = resumeId ? `quoted form of "--resume" & " " & quoted form of ${lit(resumeId)}` : `quoted form of ${lit(prompt)}`;
+  return `tell application "Terminal"\nactivate\ndo script "cd " & quoted form of ${lit(dir)} & " && " & quoted form of ${lit(claudePath)} & " " & ${tail}\nend tell`;
 }
 
 module.exports = { READ_ONLY_TOOLS, SYSTEM, ask, triage, logDraft, cleanLogEntry, entryDate, headlessArgs, terminalScript };

@@ -130,6 +130,7 @@ function mount(root, api) {
           ${e.lever ? `<div class="iv-lever iv-glass"><small>The lever</small><p>${esc(e.lever)}</p><div class="iv-lbtns">${e.leverRef ? `<button class="iv-btn" data-lever="${i}">Mark done</button>` : ''}${e.canSkip ? `<button class="iv-btn" data-skip="${i}">Not this one</button>` : ''}${e.skipped ? `<button class="iv-snb" data-unskip="${i}">Show skipped (${e.skipped})</button>` : ''}</div></div>` : ''}
           <form class="iv-add" data-form="todo" data-i="${i}"><input name="text" aria-label="Add a todo to ${esc(e.name)}" placeholder="Add a todo…" autocomplete="off" maxlength="200"><button class="iv-btn" type="submit">Add</button><small>Goes to ${esc(e.todoTarget.label)}.</small></form>
           ${data.claudeMode && data.claudeMode !== 'off' ? `<form class="iv-add" data-form="ask" data-i="${i}"><input name="q" aria-label="Ask Claude about ${esc(e.name)}" placeholder="Ask Claude about this effort…" autocomplete="off" maxlength="300"><button class="iv-btn" type="submit">Ask</button></form>` : ''}
+          ${sessBlock(e)}
           <div class="iv-spark"><svg width="154" height="34" viewBox="0 0 154 34" role="img" aria-label="Changes per week, last ${e.weeks.length} weeks: ${e.weeks.join(', ')}">${bars}</svg><small>Weeks with changes, last ${e.weeks.length}. From git history of this folder.</small></div>
           <details><summary>About this effort</summary>${e.summary ? `<p>${esc(e.summary)}</p>` : ''}${e.facts.length ? `<ul class="iv-facts">${e.facts.map(f => `<li>${esc(f)}</li>`).join('')}</ul>` : ''}
             <div class="iv-links"><button class="iv-btn" data-open="${esc(e.path)}">Open README</button>${e.boardPath ? `<button class="iv-btn" data-open="${esc(e.boardPath)}">Open board</button>` : ''}<button class="iv-btn" data-move="-1" data-i="${i}" ${i === 0 ? 'disabled' : ''}>Move earlier</button><button class="iv-btn" data-move="1" data-i="${i}" ${i === N - 1 ? 'disabled' : ''}>Move later</button>${data.efforts.some(x => x.pinned) ? '<button class="iv-btn" data-reset-order>Reset order</button>' : ''}<button class="iv-btn" data-archive="${esc(e.folder)}">Archive effort</button></div></details></div>
@@ -167,6 +168,32 @@ function mount(root, api) {
   const rowMarked = (r, i) => `<li class="iv-prop done" data-i="${i}"><span class="t">Marked ${esc(r.marked)}: ${esc(r.topic)}</span><span class="to">Status line in the proposal now reads ${esc(r.marked)}.</span><span class="act"><button class="iv-btn" data-undo>Undo</button></span></li>`;
   // Sessions grouped by day: a date column on the left, the day's entries on the right, joined by a thin line.
   const dayName = iso => { const m = /(\d{4})-(\d{2})-(\d{2})/.exec(iso || ''); return m ? new Date(+m[1], +m[2] - 1, +m[3]).toLocaleDateString('en-US', { weekday: 'short' }) : ''; };
+  // Claude Code sessions are named "Ideaverse [<Effort>]: title"; the bracket ties a session to an effort or layer.
+  function sessParts(title) {
+    const m = /^Ideaverse \[([^\]]+)\]:\s*(.*)$/.exec(title || '');
+    return m ? { tag: m[1].trim(), title: m[2].trim() || title } : { tag: '', title: title || 'Untitled' };
+  }
+  function sessAgo(ms) {
+    const d = Math.floor((Date.now() - ms) / 864e5), t = new Date(ms);
+    return (d <= 0 ? 'today' : d === 1 ? 'yesterday' : d + ' days ago') + ' ' + t.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+  }
+  function sessRows(list, showTag) {
+    const can = data.claudeMode && data.claudeMode !== 'off';
+    return `<ul class="iv-cs">${list.map(s => {
+      const p = sessParts(s.title);
+      return `<li class="iv-cs-row"><span class="iv-cs-t">${esc(p.title)}</span><span class="iv-cs-m">${showTag && p.tag ? `<i>${esc(p.tag)}</i>` : ''}${esc(sessAgo(s.mtime))}</span>${can ? `<button class="iv-btn" data-resume="${esc(s.id)}" aria-label="Resume session: ${esc(p.title)}">Resume</button>` : ''}</li>`;
+    }).join('')}</ul>`;
+  }
+  function sessBlock(e) {
+    const list = (data.claudeSessions || []).filter(s => sessParts(s.title).tag.toLowerCase() === e.name.toLowerCase());
+    return list.length ? `<details class="iv-cs-wrap"><summary>Claude sessions (${list.length})</summary>${sessRows(list.slice(0, 8), false)}</details>` : '';
+  }
+  function sessionsSection() {
+    const list = data.claudeSessions || [];
+    if (!list.length) return '';
+    const loose = list.filter(s => !sessParts(s.title).tag).length;
+    return `<h3 class="iv-sub">Claude sessions</h3>${sessRows(list.slice(0, 20), true)}<p class="iv-note">${list.length} sessions found for this vault${loose ? `, ${loose} not named as Ideaverse [Effort]: title` : ''}. Resume opens the session in a terminal.</p>`;
+  }
   function timeline(list) {
     const days = [];
     for (const s of list) { const key = s.iso || s.date; let d = days[days.length - 1]; if (!d || d.key !== key) { d = { key, iso: s.iso, date: s.date, items: [] }; days.push(d); } d.items.push(s); }
@@ -201,7 +228,7 @@ function mount(root, api) {
       : claude.status === 'error' ? `<div class="iv-void">${esc(claude.text)}</div>`
       : `<pre class="iv-answer">${esc(claude.text)}</pre>${claude.draft ? `<div class="act"><button class="iv-btn p" data-claude-log>Add to today's log</button></div><p class="iv-note">Nothing is written until you press the button. Edit the entry afterwards in the log note if needed.</p>` : ''}${claude.mode === 'background' ? '<p class="iv-note">Read-only run: Claude could read notes but not change them.</p>' : ''}`],
     archived: () => ['Archived efforts', (data.archived || []).length ? `<ul class="iv-rows">${data.archived.map(a => `<li class="iv-prop"><span class="t">${esc(a.name)}</span><span class="to">${esc(a.folder)} · last changed ${esc(fmtIso(a.last))}</span><span class="act"><button class="iv-btn" data-open="${esc(a.path)}">Open</button><button class="iv-btn p" data-restore="${esc(a.folder)}">Restore</button></span></li>`).join('')}</ul><p class="iv-note">Restore moves the folder back to Efforts.</p>` : '<div class="iv-void"><b>0</b>archived efforts.</div>'],
-    recent: () => ['Recently', `${data.claudeMode && data.claudeMode !== 'off' ? '<div class="act" style="margin-bottom:10px"><button class="iv-btn" data-claude-log-draft>Draft today\'s log entry</button></div>' : ''}${timeline(data.sessions)}`]
+    recent: () => ['Recently', `${data.claudeMode && data.claudeMode !== 'off' ? '<div class="act" style="margin-bottom:10px"><button class="iv-btn" data-claude-log-draft>Draft today\'s log entry</button></div>' : ''}${timeline(data.sessions)}${sessionsSection()}`]
   };
   function startClaude(kind, payload, title) {
     const id = ++claude.id;
@@ -287,6 +314,19 @@ function mount(root, api) {
     if (cn) { const [y, m] = calMonth.split('-').map(Number), d = new Date(y, m - 1 + +cn.dataset.calNav, 1); calMonth = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`; showView('calendar'); const b = winEl.querySelector(`[data-cal-nav="${cn.dataset.calNav}"]`); if (b) b.focus(); return; }
     if (t.closest('[data-cal-today]')) { calMonth = data.today.slice(0, 7); calSel = data.today; showView('calendar'); return; }
     const nd = t.closest('[data-new-daily]'); if (nd) { api.createDailyNote(nd.dataset.newDaily).then(p => { if (p) { api.open(p); } }); return; }
+    const resumeBtn = t.closest('[data-resume]');
+    if (resumeBtn) {
+      const s = (data.claudeSessions || []).find(x => x.id === resumeBtn.dataset.resume);
+      if (s) {
+        const nm = sessParts(s.title).title;
+        api.claudeRun('resume', { id: s.id, cwd: s.cwd, name: nm }).then(r => {
+          if (r.ok) { resumeBtn.textContent = 'Opened'; return; }
+          claude = { id: ++claude.id, title: 'Resume ' + nm, status: 'error', text: r.error || 'Failed.', draft: false, mode: r.mode };
+          showView('claude');
+        });
+      }
+      return;
+    }
     if (t.closest('[data-claude-cancel]')) { api.claudeCancel(); return; }
     if (t.closest('[data-claude-triage]')) return startClaude('triage', { paths: data.proposals.tray.map(p => p.path) }, 'Proposal triage');
     if (t.closest('[data-claude-log-draft]')) return startClaude('log', {}, 'Draft log entry');

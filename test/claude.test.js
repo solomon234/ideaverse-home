@@ -31,3 +31,9 @@ test('prompts carry the question, the paths and the date', () => {
   assert.ok(K.triage(['AIOS/Proposals/a.md']).includes('- AIOS/Proposals/a.md'));
   assert.ok(K.logDraft({ date: '2026-10-23', changes: 'abc fix', status: '' }).includes('**2026-10-23 (short topic)**'));
 });
+
+test('terminalScript resumes a session by id instead of passing a prompt', () => {
+  const s = K.terminalScript('/bin/claude', '/vault', '', 'abc-123');
+  assert.ok(s.includes('quoted form of "--resume" & " " & quoted form of "abc-123"'));
+  assert.ok(!s.includes('linefeed'));
+});

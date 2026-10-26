@@ -214,3 +214,33 @@ test('status, skip, order and daily note actions do what they say', { skip: !fs.
   assert.strictEqual(files['V/Calendar/2026-10-24.md'], 'mine', 'an existing note is never overwritten');
   assert.strictEqual(await plugin.createDailyNote('nope'), '');
 });
+
+test('Claude Code sessions are read from the transcript folder: last title wins, start folder kept, other vaults ignored', { skip: !fs.existsSync(DIST) && 'run npm run build first' }, async () => {
+  const os = require('os');
+  const { Cls } = loadPlugin();
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'iv-home-')), vault = path.join(home, 'My Vault');
+  fs.mkdirSync(vault, { recursive: true });
+  const slug = vault.replace(/[^A-Za-z0-9]/g, '-'), projects = path.join(home, '.claude', 'projects');
+  const put = (dir, id, lines) => { fs.mkdirSync(path.join(projects, dir), { recursive: true }); fs.writeFileSync(path.join(projects, dir, id + '.jsonl'), lines.map(l => JSON.stringify(l)).join('\n') + '\n'); };
+  const A = '11111111-1111-1111-1111-111111111111', B = '22222222-2222-2222-2222-222222222222', C = '33333333-3333-3333-3333-333333333333', D = '44444444-4444-4444-4444-444444444444';
+  put(slug, A, [{ type: 'user', cwd: vault }, { type: 'ai-title', aiTitle: 'Auto title' }, { type: 'custom-title', customTitle: 'Ideaverse [Security]: Renamed "quoted"' }, { type: 'user', cwd: path.join(vault, 'moved') }]);
+  put(slug + '-Efforts-A', B, [{ type: 'user', cwd: path.join(vault, 'Efforts', 'A') }, { type: 'ai-title', aiTitle: 'Only auto' }]);
+  put(slug, C, [{ type: 'user', cwd: vault }, { type: 'user', text: 'no title yet' }]);
+  put(slug + '-other', D, [{ type: 'user', cwd: vault + '-other' }, { type: 'ai-title', aiTitle: 'Different vault' }]);
+  const saved = [process.env.HOME, process.env.USERPROFILE];
+  process.env.HOME = process.env.USERPROFILE = home;
+  try {
+    const plugin = new Cls({ vault: { adapter: { getBasePath: () => vault } } });
+    plugin.settings = {};
+    const list = plugin.claudeSessions();
+    assert.deepStrictEqual(list.map(s => s.id).sort(), [A, B], 'untitled and other-vault sessions are left out');
+    const a = list.find(s => s.id === A);
+    assert.strictEqual(a.title, 'Ideaverse [Security]: Renamed "quoted"');
+    assert.strictEqual(a.cwd, vault, 'the folder the session started in, not where the shell moved to');
+    const r = await plugin.claudeTask('resume', { id: A, cwd: a.cwd, name: 'x' });
+    assert.strictEqual(r.resume, A);
+    await assert.rejects(plugin.claudeTask('resume', { id: '../evil' }), /no usable id/);
+  } finally {
+    process.env.HOME = saved[0]; process.env.USERPROFILE = saved[1];
+  }
+});
