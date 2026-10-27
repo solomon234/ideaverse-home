@@ -14,7 +14,7 @@ function loadPlugin() {
   class Plugin { constructor(app) { this.app = app; this.saved = null; this.events = []; this.cmds = []; this.ribbon = []; this.viewFactories = {}; }
     async loadData() { return this.saved; } async saveData(d) { this.saved = d; }
     registerView(t, f) { this.viewFactories[t] = f; } addRibbonIcon(i, t, cb) { this.ribbon.push(t); } addCommand(c) { this.cmds.push(c.id); } addSettingTab() {}
-    registerEvent(e) { this.events.push(e); } register() {} registerInterval() {} }
+    registerEvent(e) { this.events.push(e); } register() {} registerInterval() {} registerDomEvent() {} }
   class ItemView { constructor(leaf) { this.leaf = leaf; this.contentEl = {}; } }
   class TFile { constructor(p) { this.path = p; } }
   class TFolder { constructor(p) { this.path = p; } }
