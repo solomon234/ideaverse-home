@@ -214,3 +214,4 @@ test('status, skip, order and daily note actions do what they say', { skip: !fs.
   assert.strictEqual(files['V/Calendar/2026-10-24.md'], 'mine', 'an existing note is never overwritten');
   assert.strictEqual(await plugin.createDailyNote('nope'), '');
 });
+

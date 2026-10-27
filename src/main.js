@@ -367,6 +367,7 @@ module.exports = class IdeaverseHome extends Plugin {
   claudeBinary() {
     const fs = require('fs'), home = require('os').homedir();
     if (this.settings.claudePath) return fs.existsSync(this.settings.claudePath) ? this.settings.claudePath : null;
+    if (process.platform === 'win32') return [`${home}\\.local\\bin\\claude.exe`, `${home}\\.claude\\local\\claude.exe`].find(p => fs.existsSync(p)) || null;
     return ['/opt/homebrew/bin/claude', '/usr/local/bin/claude', `${home}/.local/bin/claude`, `${home}/.claude/local/claude`].find(p => fs.existsSync(p)) || null;
   }
 
@@ -418,8 +419,9 @@ module.exports = class IdeaverseHome extends Plugin {
   openInTerminal(bin, task) {
     return new Promise((resolve, reject) => {
       const cmd = `cd '${task.cwd.replace(/'/g, "'\\''")}' && '${bin}' '${task.prompt.replace(/'/g, "'\\''")}'`;
+      if (process.platform === 'win32') return this.openInWindowsTerminal(bin, task).then(resolve, reject);
       if (process.platform !== 'darwin') {
-        navigator.clipboard.writeText(cmd).then(() => resolve({ ok: true, mode: 'terminal', text: 'Terminal launch is macOS only here. The command is on your clipboard: paste it into a terminal.' }), reject);
+        navigator.clipboard.writeText(cmd).then(() => resolve({ ok: true, mode: 'terminal', text: 'Terminal launch is only built for macOS and Windows here. The command is on your clipboard: paste it into a terminal.' }), reject);
         return;
       }
       require('child_process').execFile('osascript', ['-e', K.terminalScript(bin, task.cwd, task.prompt)], err =>
@@ -427,10 +429,41 @@ module.exports = class IdeaverseHome extends Plugin {
     });
   }
 
+  // Windows: the prompt and a small PowerShell script go to the temp folder (no quoting through cmd), then open in Windows Terminal, or a plain console window if wt.exe is missing.
+  openInWindowsTerminal(bin, task) {
+    return new Promise((resolve, reject) => {
+      const fs = require('fs'), os = require('os'), path = require('path'), cp = require('child_process');
+      const stamp = Date.now(), promptFile = path.join(os.tmpdir(), `ideaverse-claude-${stamp}.txt`), script = path.join(os.tmpdir(), `ideaverse-claude-${stamp}.ps1`);
+      const q = s => "'" + String(s).replace(/'/g, "''") + "'";
+      try {
+        if (!task.resume) fs.writeFileSync(promptFile, task.prompt, 'utf8');
+        fs.writeFileSync(script, '﻿' + [
+          `Set-Location -LiteralPath ${q(task.cwd)}`,
+          ...(task.resume ? [`& ${q(bin)} --resume ${q(task.resume)}`] : [
+            `$p = Get-Content -Raw -Encoding UTF8 -LiteralPath ${q(promptFile)}`,
+            `Remove-Item -LiteralPath ${q(promptFile)} -ErrorAction SilentlyContinue`,
+            // Windows PowerShell 5.1 (and legacy argument passing) drops embedded double quotes unless they are escaped.
+            `if ($PSVersionTable.PSVersion.Major -lt 7 -or $PSNativeCommandArgumentPassing -eq 'Legacy') { $p = $p -replace '"', '\\"' }`,
+            `& ${q(bin)} $p`
+          ])
+        ].join('\r\n'), 'utf8');
+      } catch (e) {
+        return reject(new Error('Could not prepare the launch script. ' + e.message));
+      }
+      const ps = ['powershell.exe', '-NoExit', '-ExecutionPolicy', 'Bypass', '-File', script];
+      const launch = (cmd, args, fallback) => {
+        const child = cp.spawn(cmd, args, { detached: true, stdio: 'ignore' });
+        child.once('error', err => (fallback ? fallback() : reject(new Error('Could not open a terminal. ' + err.message))));
+        child.once('spawn', () => { child.unref(); resolve({ ok: true, mode: 'terminal', text: 'Opened in a terminal window. Claude asks before it changes anything there.' }); });
+      };
+      launch('wt.exe', ['-d', task.cwd, ...ps], () => launch('cmd.exe', ['/c', 'start', '', '/D', task.cwd, ...ps]));
+    });
+  }
+
   runHeadless(bin, task) {
     return new Promise(resolve => {
       const home = require('os').homedir();
-      const env = Object.assign({}, process.env, { PATH: [process.env.PATH, '/opt/homebrew/bin', '/usr/local/bin', `${home}/.local/bin`].filter(Boolean).join(':') });
+      const env = Object.assign({}, process.env, { PATH: [process.env.PATH, ...(process.platform === 'win32' ? [] : ['/opt/homebrew/bin', '/usr/local/bin', `${home}/.local/bin`])].filter(Boolean).join(require('path').delimiter) });
       const child = require('child_process').spawn(bin, K.headlessArgs(task.prompt), { cwd: task.cwd, env, stdio: ['ignore', 'pipe', 'pipe'] });
       this.claudeProc = child;
       let out = '', err = '', done = false;
