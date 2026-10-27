@@ -81,6 +81,7 @@ module.exports = class IdeaverseHome extends Plugin {
     this.register(() => clearTimeout(timer));
     // Claude Code sessions are written outside the vault, so no vault event announces them; coming back to the window is when they matter.
     this.registerDomEvent(window, 'focus', later);
+    this.registerInterval(window.setInterval(() => { if (document.hasFocus()) this.refresh(); }, 60 * 1000)); // also keeps Active now current while you look at it
     this.registerInterval(window.setInterval(() => this.refresh(), 10 * 60 * 1000)); // keeps "days ago" honest overnight
 
     if (this.settings.openOnStartup) this.app.workspace.onLayoutReady(() => this.activate());

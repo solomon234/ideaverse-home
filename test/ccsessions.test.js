@@ -50,3 +50,21 @@ test('resumeScript only accepts a real session id', () => {
   assert.strictEqual(K.resumeScript('/bin/claude', '/v', "x'; rm -rf ~"), null);
   assert.match(K.resumeScript('/bin/claude', '/v', 'aaaaaaaa-0000-4000-8000-000000000005'), /--resume/);
 });
+
+test('a running session is flagged from the registry; a dead pid or a session outside the vault is not', async () => {
+  const vault = '/Users/x/live';
+  const projects = makeProjects(vault, [
+    [vault, 'aaaaaaaa-0000-4000-8000-000000000006', [user('running one', vault)], 3000],
+    [vault, 'aaaaaaaa-0000-4000-8000-000000000007', [user('crashed one', vault)], 2000],
+    [vault, 'aaaaaaaa-0000-4000-8000-000000000008', [user('elsewhere', vault)], 1000]
+  ]);
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'iv-sessions-'));
+  const reg = (pid, sessionId, cwd, status) => fs.writeFileSync(path.join(dir, pid + '.json'), JSON.stringify({ pid, sessionId, cwd, status, name: 'Named run', nameSource: 'user' }));
+  reg(process.pid, 'aaaaaaaa-0000-4000-8000-000000000006', vault, 'busy');
+  reg(2147483000, 'aaaaaaaa-0000-4000-8000-000000000007', vault, 'busy');
+  reg(process.pid + 1000000, 'aaaaaaaa-0000-4000-8000-000000000008', '/Users/y/other', 'idle');
+  const got = await claudeSessions(vault, { projectsDir: projects, sessionsDir: dir, limit: 1 });
+  assert.deepStrictEqual(got.map(s => [s.id.slice(-1), s.active, s.title]), [['6', 'busy', 'Named run']]);
+  const all = await claudeSessions(vault, { projectsDir: projects, sessionsDir: dir });
+  assert.deepStrictEqual(all.map(s => [s.id.slice(-1), s.active]), [['6', 'busy'], ['7', ''], ['8', '']]);
+});

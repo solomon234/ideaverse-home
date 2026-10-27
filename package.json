@@ -1,6 +1,6 @@
 {
   "name": "ideaverse-home",
-  "version": "0.4.1",
+  "version": "0.4.2",
   "description": "Ideaverse home: a one-effort-per-screen dashboard for an Obsidian vault.",
   "private": true,
   "type": "commonjs",

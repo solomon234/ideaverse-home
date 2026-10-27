@@ -170,8 +170,14 @@ function mount(root, api) {
   const dayName = iso => { const m = /(\d{4})-(\d{2})-(\d{2})/.exec(iso || ''); return m ? new Date(+m[1], +m[2] - 1, +m[3]).toLocaleDateString('en-US', { weekday: 'short' }) : ''; };
   // Log entries and Claude Code transcripts in one list, newest day first; within a day the written-up entries come before the raw sessions.
   function timelineItems() {
-    const cc = (data.claudeSessions || []).map(c => ({ cc: true, id: c.id, cwd: c.cwd, iso: c.iso, date: fmtIso(c.iso), title: c.title, tag: c.folder ? c.folder.replace(/^.*\/Efforts\//, '').replace(/^Efforts\//, '').split('/')[0] : 'vault' }));
+    const cc = (data.claudeSessions || []).map(c => ({ cc: true, active: c.active, pid: c.pid, id: c.id, cwd: c.cwd, iso: c.iso, date: fmtIso(c.iso), title: c.title, tag: c.folder ? c.folder.replace(/^.*\/Efforts\//, '').replace(/^Efforts\//, '').split('/')[0] : 'vault' }));
     return [...data.sessions, ...cc].map((s, n) => ({ s, n })).sort((a, b) => (a.s.iso < b.s.iso ? 1 : a.s.iso > b.s.iso ? -1 : (!!a.s.cc - !!b.s.cc) || a.n - b.n)).map(x => x.s);
+  }
+  // Sessions running now, above the timeline. They cannot be resumed (they are already open somewhere), so they are plain rows.
+  function activeStrip() {
+    const live = timelineItems().filter(s => s.active);
+    if (!live.length) return '';
+    return `<h3 class="iv-gh">Active now</h3><ul class="iv-live">${live.map(s => `<li><span class="iv-dot ${esc(s.active)}" aria-hidden="true"></span><span class="iv-et">${esc(s.title)}</span><span class="iv-meta"><span>${s.active === 'busy' ? 'Working' : 'Waiting for you'}</span><span>${esc(s.tag)}</span><span>pid ${esc(s.pid)}</span></span></li>`).join('')}</ul>`;
   }
   function timeline(list) {
     const days = [];
@@ -208,7 +214,7 @@ function mount(root, api) {
       : claude.status === 'error' ? `<div class="iv-void">${esc(claude.text)}</div>`
       : `<pre class="iv-answer">${esc(claude.text)}</pre>${claude.draft ? `<div class="act"><button class="iv-btn p" data-claude-log>Add to today's log</button></div><p class="iv-note">Nothing is written until you press the button. Edit the entry afterwards in the log note if needed.</p>` : ''}${claude.mode === 'background' ? '<p class="iv-note">Read-only run: Claude could read notes but not change them.</p>' : ''}`],
     archived: () => ['Archived efforts', (data.archived || []).length ? `<ul class="iv-rows">${data.archived.map(a => `<li class="iv-prop"><span class="t">${esc(a.name)}</span><span class="to">${esc(a.folder)} · last changed ${esc(fmtIso(a.last))}</span><span class="act"><button class="iv-btn" data-open="${esc(a.path)}">Open</button><button class="iv-btn p" data-restore="${esc(a.folder)}">Restore</button></span></li>`).join('')}</ul><p class="iv-note">Restore moves the folder back to Efforts.</p>` : '<div class="iv-void"><b>0</b>archived efforts.</div>'],
-    recent: () => ['Recently', `${data.claudeMode && data.claudeMode !== 'off' ? '<div class="act" style="margin-bottom:10px"><button class="iv-btn" data-claude-log-draft>Draft today\'s log entry</button></div>' : ''}${timeline(timelineItems())}`]
+    recent: () => ['Recently', `${data.claudeMode && data.claudeMode !== 'off' ? '<div class="act" style="margin-bottom:10px"><button class="iv-btn" data-claude-log-draft>Draft today\'s log entry</button></div>' : ''}${activeStrip()}${timeline(timelineItems().filter(s => !s.active))}`]
   };
   function startClaude(kind, payload, title) {
     const id = ++claude.id;
