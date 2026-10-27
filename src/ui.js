@@ -130,6 +130,7 @@ function mount(root, api) {
           ${e.lever ? `<div class="iv-lever iv-glass"><small>The lever</small><p>${esc(e.lever)}</p><div class="iv-lbtns">${e.leverRef ? `<button class="iv-btn" data-lever="${i}">Mark done</button>` : ''}${e.canSkip ? `<button class="iv-btn" data-skip="${i}">Not this one</button>` : ''}${e.skipped ? `<button class="iv-snb" data-unskip="${i}">Show skipped (${e.skipped})</button>` : ''}</div></div>` : ''}
           <form class="iv-add" data-form="todo" data-i="${i}"><input name="text" aria-label="Add a todo to ${esc(e.name)}" placeholder="Add a todo…" autocomplete="off" maxlength="200"><button class="iv-btn" type="submit">Add</button><small>Goes to ${esc(e.todoTarget.label)}.</small></form>
           ${data.claudeMode && data.claudeMode !== 'off' ? `<form class="iv-add" data-form="ask" data-i="${i}"><input name="q" aria-label="Ask Claude about ${esc(e.name)}" placeholder="Ask Claude about this effort…" autocomplete="off" maxlength="300"><button class="iv-btn" type="submit">Ask</button></form>` : ''}
+          ${sessBlock(e)}
           <div class="iv-spark"><svg width="154" height="34" viewBox="0 0 154 34" role="img" aria-label="Changes per week, last ${e.weeks.length} weeks: ${e.weeks.join(', ')}">${bars}</svg><small>Weeks with changes, last ${e.weeks.length}. From git history of this folder.</small></div>
           <details><summary>About this effort</summary>${e.summary ? `<p>${esc(e.summary)}</p>` : ''}${e.facts.length ? `<ul class="iv-facts">${e.facts.map(f => `<li>${esc(f)}</li>`).join('')}</ul>` : ''}
             <div class="iv-links"><button class="iv-btn" data-open="${esc(e.path)}">Open README</button>${e.boardPath ? `<button class="iv-btn" data-open="${esc(e.boardPath)}">Open board</button>` : ''}<button class="iv-btn" data-move="-1" data-i="${i}" ${i === 0 ? 'disabled' : ''}>Move earlier</button><button class="iv-btn" data-move="1" data-i="${i}" ${i === N - 1 ? 'disabled' : ''}>Move later</button>${data.efforts.some(x => x.pinned) ? '<button class="iv-btn" data-reset-order>Reset order</button>' : ''}<button class="iv-btn" data-archive="${esc(e.folder)}">Archive effort</button></div></details></div>
@@ -178,6 +179,23 @@ function mount(root, api) {
     const live = timelineItems().filter(s => s.active);
     if (!live.length) return '';
     return `<h3 class="iv-gh">Active now</h3><ul class="iv-live">${live.map(s => `<li><span class="iv-dot ${esc(s.active)}" aria-hidden="true"></span><span class="iv-et">${esc(s.title)}</span><span class="iv-meta"><span>${s.active === 'busy' ? 'Working' : 'Waiting for you'}</span><span>${esc(s.tag)}</span><span>pid ${esc(s.pid)}</span></span></li>`).join('')}</ul>`;
+  }
+  // Claude Code sessions are named "Ideaverse [<Effort>]: title"; the bracket ties a session to an effort or layer.
+  function sessParts(title) {
+    const m = /^Ideaverse \[([^\]]+)\]:\s*(.*)$/.exec(title || '');
+    return m ? { tag: m[1].trim(), title: m[2].trim() || title } : { tag: '', title: title || 'Untitled' };
+  }
+  function sessAgo(ms) {
+    const d = Math.floor((Date.now() - ms) / 864e5), t = new Date(ms);
+    return (d <= 0 ? 'today' : d === 1 ? 'yesterday' : d + ' days ago') + ' ' + t.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+  }
+  // The sessions that belong to an effort: named for it, or started inside its folder.
+  function sessBlock(e) {
+    const name = e.name.toLowerCase(), can = data.claudeMode && data.claudeMode !== 'off';
+    const list = (data.claudeSessions || []).filter(s => !s.active && (sessParts(s.title).tag.toLowerCase() === name || String(s.folder || '').replace(/^Efforts\//, '').split('/')[0].toLowerCase() === name));
+    if (!list.length) return '';
+    const rows = list.slice(0, 8).map(s => { const p = sessParts(s.title); return `<li class="iv-cs-row"><span class="iv-cs-t">${esc(p.title)}</span><span class="iv-cs-m">${esc(sessAgo(s.mtime))}</span>${can ? `<button class="iv-btn" data-resume="${esc(s.id)}" data-cwd="${esc(s.cwd)}" aria-label="Resume session: ${esc(p.title)}">Resume</button>` : ''}</li>`; }).join('');
+    return `<details class="iv-cs-wrap"><summary>Claude sessions (${list.length})</summary><ul class="iv-cs">${rows}</ul></details>`;
   }
   function timeline(list) {
     const days = [];

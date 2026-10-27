@@ -267,3 +267,13 @@
 .ideaverse-root .iv-filter{width:100%;box-sizing:border-box;min-height:44px;font:inherit;font-size:16px;color:#fff;background:rgba(255,255,255,.08);border:1px solid var(--iv-edge);border-radius:10px;padding:0 12px;margin-bottom:12px;color-scheme:dark}
 .ideaverse-root .iv-gh{font-size:13px;font-family:var(--iv-mono);color:var(--iv-muted);margin:18px 0 8px;font-weight:500}
 .ideaverse-root [hidden]{display:none!important}
+.ideaverse-root .iv-sub{margin:6px 24px 0;padding-top:14px;border-top:1px solid rgba(255,255,255,.07);font-size:13px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--iv-muted)}
+.ideaverse-root .iv-cs{list-style:none;margin:0;padding:6px 24px 8px;display:grid;gap:2px}
+.ideaverse-root .iv-cs-row{display:grid;grid-template-columns:1fr auto;gap:0 12px;align-items:center;padding:8px 10px;border-radius:10px}
+.ideaverse-root .iv-cs-row:hover{background:rgba(255,255,255,.07)}
+.ideaverse-root .iv-cs-t{font-size:15px;font-weight:500;grid-column:1}
+.ideaverse-root .iv-cs-m{grid-column:1;font-size:13px;color:var(--iv-muted);display:flex;flex-wrap:wrap;gap:2px 10px}
+.ideaverse-root .iv-cs-m i{font-style:normal;color:#9cc4ff}
+.ideaverse-root .iv-cs-row .iv-btn{grid-column:2;grid-row:1 / span 2}
+.ideaverse-root .iv-cs-wrap{margin:8px 0}
+.ideaverse-root .iv-cs-wrap .iv-cs{padding:6px 0 0}
