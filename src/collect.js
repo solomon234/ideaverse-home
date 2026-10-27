@@ -178,6 +178,8 @@ async function collect(io, settings, today) {
     }
   }
   out.sessions = sessions.slice(0, 10);
+  // Claude Code's own transcripts, so a session shows up whether or not anyone wrote it into the log. Optional: only the desktop io has it.
+  out.claudeSessions = io.claudeSessions ? await io.claudeSessions().catch(() => []) : [];
 
   // things that need him: unchecked Immediate todos from effort notes (structured), then open items from the log (free text)
   // A snoozed item is hidden until its date (or for good). Its key is its note and its text, so editing the text brings it back.

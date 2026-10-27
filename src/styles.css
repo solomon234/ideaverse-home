@@ -218,6 +218,7 @@
 .ideaverse-root .iv-meta{display:flex;flex-wrap:wrap;gap:2px 12px;font-size:13px;color:var(--iv-muted)}
 .ideaverse-root .iv-meta span+span::before{content:'·';margin-right:12px;color:var(--iv-muted)}
 .ideaverse-root .iv-meta .iv-op{color:#ffd48a}
+.ideaverse-root .iv-cc .iv-et::before{content:'';display:inline-block;width:6px;height:6px;margin-right:8px;border-radius:50%;background:#8ab4ff;vertical-align:middle}
 @media (max-width:640px){.ideaverse-root .iv-day{grid-template-columns:1fr;gap:6px}.ideaverse-root .iv-dl{grid-auto-flow:column;justify-content:start;align-items:baseline;gap:10px}}
 
 /* snooze */

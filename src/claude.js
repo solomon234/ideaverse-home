@@ -38,10 +38,20 @@ const entryDate = entry => (/^\*\*(\d{4}-\d{2}-\d{2})/.exec(entry) || [])[1] || 
 // Arguments for a background run. --no-session-persistence keeps these one-off runs out of the session history.
 const headlessArgs = prompt => ['-p', prompt, '--tools', READ_ONLY_TOOLS, '--no-session-persistence', '--append-system-prompt', SYSTEM];
 
+// An AppleScript string literal; newlines become linefeed concatenations.
+const lit = s => '"' + String(s).replace(/\\/g, '\\\\').replace(/"/g, '\\"').split('\n').join('" & linefeed & "') + '"';
+
 // AppleScript that opens Terminal in a folder and starts an interactive claude with the prompt.
 function terminalScript(claudePath, dir, prompt) {
-  const lit = s => '"' + String(s).replace(/\\/g, '\\\\').replace(/"/g, '\\"').split('\n').join('" & linefeed & "') + '"';
   return `tell application "Terminal"\nactivate\ndo script "cd " & quoted form of ${lit(dir)} & " && " & quoted form of ${lit(claudePath)} & " " & quoted form of ${lit(prompt)}\nend tell`;
 }
 
-module.exports = { READ_ONLY_TOOLS, SYSTEM, ask, triage, logDraft, cleanLogEntry, entryDate, headlessArgs, terminalScript };
+const SESSION_ID = /^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i;
+
+// Same, but picks an earlier session back up. Null if the id is not a session id (it ends up in a shell command).
+function resumeScript(claudePath, dir, sessionId) {
+  if (!SESSION_ID.test(String(sessionId))) return null;
+  return `tell application "Terminal"\nactivate\ndo script "cd " & quoted form of ${lit(dir)} & " && " & quoted form of ${lit(claudePath)} & " --resume " & quoted form of ${lit(sessionId)}\nend tell`;
+}
+
+module.exports = { READ_ONLY_TOOLS, SYSTEM, ask, triage, logDraft, cleanLogEntry, entryDate, headlessArgs, terminalScript, resumeScript, SESSION_ID };

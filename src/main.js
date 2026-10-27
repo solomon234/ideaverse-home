@@ -18,6 +18,7 @@ function obsidianIO(app) {
     async list(dir) { const l = await a.list(dir || '/'); return { files: l.files.filter(visible), folders: l.folders.filter(visible) }; },
     read: p => a.read(p),
     exists: p => a.exists(p),
+    claudeSessions: () => (base ? require('./ccsessions').claudeSessions(base) : Promise.resolve([])),
     async mtimeIso(p) { const s = await a.stat(p); return s ? new Date(s.mtime).toISOString().slice(0, 10) : '1970-01-01'; },
     // git history of a folder gives the activity strip; without git (or on mobile) the strip is simply empty
     gitDates(p) {
@@ -50,6 +51,7 @@ class HomeView extends ItemView {
       unsnooze: key => plugin.unsnooze(key),
       claudeRun: (kind, payload) => plugin.claudeRun(kind, payload),
       claudeCancel: () => plugin.claudeCancel(),
+      claudeResume: (id, cwd) => plugin.claudeResume(id, cwd),
       appendLog: text => plugin.appendLog(text),
       completeLever: ref => plugin.completeLever(ref),
       addTodo: (target, text) => plugin.addTodo(target, text),
@@ -443,6 +445,21 @@ module.exports = class IdeaverseHome extends Plugin {
   }
 
   claudeCancel() { if (this.claudeProc) this.claudeProc.kill(); }
+
+  // Picks an earlier Claude Code session back up in Terminal. The folder must be the vault or inside it.
+  claudeResume(id, cwd) {
+    const base = this.baseAbs(), bin = this.claudeBinary();
+    if (this.settings.claudeMode === 'off') return new Notice('Ideaverse home: Claude is switched off in the plugin settings.');
+    if (!bin) return new Notice('Ideaverse home: could not find the claude command. Set its path under Settings, Ideaverse Home.');
+    const dir = cwd && base && (cwd === base || cwd.startsWith(base + '/')) ? cwd : base;
+    const script = K.resumeScript(bin, dir, id);
+    if (!script) return new Notice('Ideaverse home: that is not a session id.');
+    if (process.platform !== 'darwin') {
+      const q = s => `'${s.replace(/'/g, "'\\''")}'`;
+      return navigator.clipboard.writeText(`cd ${q(dir)} && ${q(bin)} --resume ${id}`).then(() => new Notice('Resume is macOS only here. The command is on your clipboard.'));
+    }
+    require('child_process').execFile('osascript', ['-e', script], err => new Notice(err ? 'Ideaverse home: could not open Terminal. ' + err.message : 'Opened the session in Terminal.'));
+  }
 
   // Archiving moves the effort's whole folder to Efforts/Archived/<name>; restoring moves it back to Efforts/<name>.
   // fileManager.renameFile keeps links to the moved notes working. Resolves to true when the move happened.

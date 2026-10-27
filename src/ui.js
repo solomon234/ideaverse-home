@@ -152,7 +152,8 @@ function mount(root, api) {
   /* ---------- status line, needs panel ---------- */
   function renderStatus() {
     setN('needs', data.needs.length); setN('tray', data.layers.aios.toDecide); setN('badge', data.layers.aios.toDecide || '');
-    setN('last', data.sessions[0] ? data.sessions[0].date : 'none');
+    const newest = timelineItems()[0];
+    setN('last', newest ? newest.date : 'none');
     const sn = data.snoozed || [], until = u => (u === 'forever' ? 'until you un-snooze' : 'until ' + fmtIso(u));
     const rows = data.needs.map((n, i) => `<li data-i="${i}" tabindex="0"><b>${esc(n.title)}</b><span>${esc(n.why)}</span>${n.effort ? `<em>${esc(n.effort)}</em>` : ''}${snoozeFor === i
       ? `<div class="iv-snz" role="group" aria-label="Snooze for"><button class="iv-btn" data-snooze="day" data-i="${i}">1 day</button><button class="iv-btn" data-snooze="week" data-i="${i}">1 week</button><button class="iv-btn" data-snooze="forever" data-i="${i}">Until I un-snooze</button></div>`
@@ -167,10 +168,16 @@ function mount(root, api) {
   const rowMarked = (r, i) => `<li class="iv-prop done" data-i="${i}"><span class="t">Marked ${esc(r.marked)}: ${esc(r.topic)}</span><span class="to">Status line in the proposal now reads ${esc(r.marked)}.</span><span class="act"><button class="iv-btn" data-undo>Undo</button></span></li>`;
   // Sessions grouped by day: a date column on the left, the day's entries on the right, joined by a thin line.
   const dayName = iso => { const m = /(\d{4})-(\d{2})-(\d{2})/.exec(iso || ''); return m ? new Date(+m[1], +m[2] - 1, +m[3]).toLocaleDateString('en-US', { weekday: 'short' }) : ''; };
+  // Log entries and Claude Code transcripts in one list, newest day first; within a day the written-up entries come before the raw sessions.
+  function timelineItems() {
+    const cc = (data.claudeSessions || []).map(c => ({ cc: true, id: c.id, cwd: c.cwd, iso: c.iso, date: fmtIso(c.iso), title: c.title, tag: c.folder ? c.folder.replace(/^.*\/Efforts\//, '').replace(/^Efforts\//, '').split('/')[0] : 'vault' }));
+    return [...data.sessions, ...cc].map((s, n) => ({ s, n })).sort((a, b) => (a.s.iso < b.s.iso ? 1 : a.s.iso > b.s.iso ? -1 : (!!a.s.cc - !!b.s.cc) || a.n - b.n)).map(x => x.s);
+  }
   function timeline(list) {
     const days = [];
     for (const s of list) { const key = s.iso || s.date; let d = days[days.length - 1]; if (!d || d.key !== key) { d = { key, iso: s.iso, date: s.date, items: [] }; days.push(d); } d.items.push(s); }
     return `<ol class="iv-tl">${days.map(d => `<li class="iv-day"><div class="iv-dl"><b>${esc(d.date)}</b><span>${esc(dayName(d.iso))}</span></div><ul>${d.items.map(s =>
+      s.cc ? `<li><button class="iv-ent iv-cc" data-resume="${esc(s.id)}" data-cwd="${esc(s.cwd)}" title="Resume this session in Terminal"><span class="iv-et">${esc(s.title)}</span><span class="iv-meta"><span>Claude session</span><span>${esc(s.tag)}</span></span></button></li>` :
       `<li><button class="iv-ent" data-open="${esc(s.path)}"><span class="iv-et">${esc(s.title)}</span>${s.tag || s.open ? `<span class="iv-meta">${s.tag ? `<span>${esc(s.tag)}</span>` : ''}${s.open ? `<span class="iv-op">${s.open} open</span>` : ''}</span>` : ''}</button></li>`).join('')}</ul></li>`).join('')}</ol>`;
   }
   function calendarView() {
@@ -201,7 +208,7 @@ function mount(root, api) {
       : claude.status === 'error' ? `<div class="iv-void">${esc(claude.text)}</div>`
       : `<pre class="iv-answer">${esc(claude.text)}</pre>${claude.draft ? `<div class="act"><button class="iv-btn p" data-claude-log>Add to today's log</button></div><p class="iv-note">Nothing is written until you press the button. Edit the entry afterwards in the log note if needed.</p>` : ''}${claude.mode === 'background' ? '<p class="iv-note">Read-only run: Claude could read notes but not change them.</p>' : ''}`],
     archived: () => ['Archived efforts', (data.archived || []).length ? `<ul class="iv-rows">${data.archived.map(a => `<li class="iv-prop"><span class="t">${esc(a.name)}</span><span class="to">${esc(a.folder)} · last changed ${esc(fmtIso(a.last))}</span><span class="act"><button class="iv-btn" data-open="${esc(a.path)}">Open</button><button class="iv-btn p" data-restore="${esc(a.folder)}">Restore</button></span></li>`).join('')}</ul><p class="iv-note">Restore moves the folder back to Efforts.</p>` : '<div class="iv-void"><b>0</b>archived efforts.</div>'],
-    recent: () => ['Recently', `${data.claudeMode && data.claudeMode !== 'off' ? '<div class="act" style="margin-bottom:10px"><button class="iv-btn" data-claude-log-draft>Draft today\'s log entry</button></div>' : ''}${timeline(data.sessions)}`]
+    recent: () => ['Recently', `${data.claudeMode && data.claudeMode !== 'off' ? '<div class="act" style="margin-bottom:10px"><button class="iv-btn" data-claude-log-draft>Draft today\'s log entry</button></div>' : ''}${timeline(timelineItems())}`]
   };
   function startClaude(kind, payload, title) {
     const id = ++claude.id;
@@ -246,6 +253,7 @@ function mount(root, api) {
   const on = (el, ev, fn) => el.addEventListener(ev, fn);
   on(root, 'click', ev => {
     const t = ev.target;
+    const resume = t.closest('[data-resume]'); if (resume) { api.claudeResume(resume.dataset.resume, resume.dataset.cwd); return; }
     const o = t.closest('[data-open]'); if (o) { api.open(o.dataset.open); return; }
     const cell = t.closest('.iv-cell'); if (cell) { api.open(cell.dataset.board); return; }
     if (t.closest('.iv-nav.prev')) return go(cur - 1);

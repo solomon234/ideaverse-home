@@ -30,6 +30,7 @@ It is opinionated: it assumes a vault laid out like this, and shows a "No effort
 ## What it reads, writes and runs
 
 - **Reads** markdown notes under the root folder. Nothing leaves your machine; there are no network calls.
+- **Reads** Claude Code's session transcripts for this vault from `~/.claude/projects` (only folders for the vault and its subfolders, and only each file's first and last 96 KB, for the title) to list sessions under Recently, so a session shows up even when no one wrote it into the log. Clicking one resumes it in Terminal (macOS). It changes nothing there.
 - **Writes** only when you press a button, and only these things:
   - the `status:` line in a proposal's frontmatter (*Mark promoted* or *Dismiss* in the tray, with Undo);
   - the location of an effort's folder (*Archive effort* moves it to `Efforts/Archived/<name>`; *Restore* in the *Archived efforts* view moves it back, using Obsidian's own rename so links keep working);
