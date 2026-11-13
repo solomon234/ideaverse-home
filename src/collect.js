@@ -123,11 +123,14 @@ async function collect(io, settings, today) {
 
   // efforts, most recently changed first
   const ef = await io.list(join(R, 'Efforts')).catch(() => ({ files: [], folders: [] }));
-  const efforts = [];
+  const efforts = [], inPlaceArchived = [];
   for (const f of ef.folders) {
     if (base(f) === ARCHIVE) continue;
     const e = await collectEffort(io, f, null, S, today);
-    if (e) efforts.push(e);
+    if (!e) continue;
+    // a README whose Status says Archived stays out of the slider even when its folder was not moved
+    if (/^archived/i.test(e.status)) inPlaceArchived.push({ name: e.name, folder: f, path: e.path, last: await io.mtimeIso(e.path), inPlace: true });
+    else efforts.push(e);
   }
   efforts.sort((a, b) => a.daysAgo - b.daysAgo);
   const place = e => { const k = (S.order || []).indexOf(base(e.folder)); return k < 0 ? Infinity : k; };
@@ -135,8 +138,8 @@ async function collect(io, settings, today) {
   efforts.sort((a, b) => (place(a) === place(b) ? 0 : place(a) < place(b) ? -1 : 1)); // stable: unpinned keep their recency order
   out.efforts = efforts;
 
-  // archived efforts: folders under Efforts/Archived that still have a README
-  out.archived = [];
+  // archived efforts: Status-archived efforts left in place, plus folders under Efforts/Archived that still have a README
+  out.archived = inPlaceArchived.slice();
   const ar = await io.list(join(R, 'Efforts', ARCHIVE)).catch(() => ({ folders: [] }));
   for (const f of ar.folders) {
     const readme = join(f, 'README.md');
