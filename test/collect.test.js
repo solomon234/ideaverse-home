@@ -88,6 +88,17 @@ test('Efforts/Archived is not an effort, and its efforts are listed as archived'
   assert.deepStrictEqual(d.archived.map(a => [a.name, a.folder]), [['Old', 'Efforts/Archived/Old']]);
 });
 
+const NL = String.fromCharCode(10);
+test('an effort whose Status is Archived leaves the slider and is listed as archived, in place', async () => {
+  const root = makeVault({
+    'Efforts/Live/README.md': '# Live' + NL + NL + '**Status:** Active' + NL,
+    'Efforts/Done/README.md': '# Done' + NL + NL + '**Status:** Archived — completed' + NL
+  });
+  const d = await collect(nodeIO(root), { rootFolder: '' }, '2026-10-23');
+  assert.deepStrictEqual(d.efforts.map(e => e.name), ['Live']);
+  assert.deepStrictEqual(d.archived.map(a => [a.name, a.folder, a.inPlace]), [['Done', 'Efforts/Done', true]]);
+});
+
 test('the lever carries its source, except when set in settings', async () => {
   const root = makeVault({
     'Efforts/A/README.md': '# A\n## Todo List\n### Immediate\n- [ ] Do a\n',
